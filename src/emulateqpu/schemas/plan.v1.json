@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:emulateqpu:schema:plan.v1.json",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "emulateqpu.plan.v1"
+    },
+    "request_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "engine": {"enum": ["chain", "cavity"]},
+    "dimension": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "estimated_peak_memory_bytes": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "aggregate_memory_bytes": {
+      "type": "integer"
+    },
+    "per_worker_memory_bytes": {
+      "type": "integer"
+    },
+    "memory_budget_bytes": {"type": "integer", "minimum": 1},
+    "wall_time_s": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "estimates": {
+      "type": "object"
+    },
+    "carrier_work": {
+      "anyOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["stages", "unconditional_rhs_evaluations_floor", "conditional_rhs_evaluations_floor_if_all_run"],
+          "properties": {
+            "unconditional_rhs_evaluations_floor": {"type": "integer", "minimum": 0},
+            "conditional_rhs_evaluations_floor_if_all_run": {"type": "integer", "minimum": 0},
+            "stages": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["operation_index", "operation", "conditional", "duration_ns", "max_carrier_GHz", "max_step_ns", "accepted_steps_floor", "rhs_evaluations_floor"],
+                "properties": {
+                  "operation_index": {"type": "integer", "minimum": 0},
+                  "operation": {"enum": ["evolve", "measure"]},
+                  "conditional": {"type": "boolean"},
+                  "duration_ns": {"type": "number", "exclusiveMinimum": 0},
+                  "max_carrier_GHz": {"type": "number", "minimum": 0},
+                  "max_step_ns": {"type": "number", "exclusiveMinimum": 0},
+                  "accepted_steps_floor": {"type": "integer", "minimum": 1},
+                  "rhs_evaluations_floor": {"type": "integer", "minimum": 1}
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "qualification": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "request_sha256",
+    "dimension",
+    "estimated_peak_memory_bytes",
+    "wall_time_s"
+  ],
+  "additionalProperties": true
+}

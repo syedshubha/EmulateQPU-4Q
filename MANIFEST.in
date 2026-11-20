@@ -1,0 +1,10 @@
+include .gitattributes
+include AGENTS.md CONTRIBUTING.md README.md requirements-reference.txt NOTICE THIRD_PARTY.md justfile uv.lock
+recursive-include docs *.md
+recursive-include physical/fullwave-overlap CMakeLists.txt *.cpp
+recursive-include tests *.py
+recursive-include src/emulateqpu *.json
+global-exclude *.pyc *.pyo
+include reproducibility/mesh-ladder/README.md reproducibility/mesh-ladder/results.json reproducibility/mesh-ladder/replay.py
+include reproducibility/mesh-ladder/p1-coarse-terminal-C.csv reproducibility/mesh-ladder/p1-medium-terminal-C.csv reproducibility/mesh-ladder/p1-fine-terminal-C.csv
+include reproducibility/mesh-ladder/p2-assembled-coarse-terminal-C.csv reproducibility/mesh-ladder/p2-assembled-medium-terminal-C.csv reproducibility/mesh-ladder/p2-assembled-fine-terminal-C.csv

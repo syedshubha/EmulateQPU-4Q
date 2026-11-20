@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:emulateqpu:schema:device.v1.json",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "emulateqpu.device.v1"
+    },
+    "cell": {
+      "type": "object"
+    },
+    "topology": {
+      "type": "array"
+    },
+    "geometry": {},
+    "extraction_identity": {},
+    "parameter_origin": {
+      "enum": [
+        "extracted",
+        "assumed",
+        "supplied_fit",
+        "calibrated"
+      ]
+    }
+  },
+  "required": [
+    "schema",
+    "cell",
+    "topology",
+    "geometry",
+    "extraction_identity",
+    "parameter_origin"
+  ],
+  "additionalProperties": false
+}

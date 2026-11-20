@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:emulateqpu:schema:execution-plan.v1.json",
+  "type": "object",
+  "required": ["schema", "study", "study_sha256", "backend", "workers", "task_count", "task_plans", "aggregate_estimated_peak_bytes"],
+  "properties": {
+    "schema": {"const": "emulateqpu.execution_plan.v1"},
+    "study": {"$ref": "urn:emulateqpu:schema:study.v1.json"},
+    "study_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "backend": {"enum": ["serial", "local-process", "slurm"]},
+    "workers": {"type": "integer", "minimum": 1, "maximum": 64},
+    "numerical_threads_per_worker": {"const": 1},
+    "task_count": {"type": "integer", "minimum": 1},
+    "task_plans": {"type": "array", "items": {"$ref": "urn:emulateqpu:schema:plan.v1.json"}},
+    "per_task_estimated_peak_bytes": {"type": "array", "items": {"type": "integer", "minimum": 0}},
+    "coordinator_memory_bytes": {"type": "integer", "minimum": 0},
+    "aggregate_estimated_peak_bytes": {"type": "integer", "minimum": 0},
+    "aggregate_memory_limit_bytes": {"type": ["integer", "null"], "minimum": 1},
+    "estimates_are_bounds": {"const": false},
+    "accepted": {"const": true}
+  },
+  "additionalProperties": false
+}

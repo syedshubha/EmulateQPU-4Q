@@ -1,0 +1,8 @@
+{
+  "schema": "emulateqpu.chain.schedule.v2",
+  "duration_ns": 4.0,
+  "flux": [],
+  "drives": [{"mode": "q0", "start_ns": 0.0, "duration_ns": 4.0, "amplitude_GHz": 0.03, "frequency_GHz": 5.0, "phase_rad": 0.0, "envelope": "cosine"}],
+  "output_phases_rad": [0.0, 0.0],
+  "purpose": "Four-nanosecond engineering charge drive; amplitude is an H/h coefficient, not a calibrated Rabi rate."
+}

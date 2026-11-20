@@ -1,0 +1,27 @@
+name: CI
+on:
+  push:
+  pull_request:
+jobs:
+  tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.11"
+      - name: Install Linux Gmsh runtime libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libglu1-mesa
+      - run: uv sync --locked --extra physical
+      - run: uv run --no-sync ruff check src tests reproducibility/mesh-ladder/replay.py
+      - run: uv run --no-sync python -m unittest discover -s tests
+      - run: uv run --no-project --python 3.11 --with . --with-requirements requirements-reference.txt python -m unittest discover -s tests/references
+      - name: Replay published mesh differences
+        if: runner.os == 'macOS'
+        run: uv run --no-sync python reproducibility/mesh-ladder/replay.py
+      - run: uv build

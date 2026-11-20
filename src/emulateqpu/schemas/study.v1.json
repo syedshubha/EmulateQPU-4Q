@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:emulateqpu:schema:study.v1.json",
+  "type": "object",
+  "required": ["schema", "tasks"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "emulateqpu.study.v1"},
+    "purpose": {"type": "string"},
+    "tasks": {
+      "type": "array", "minItems": 1, "maxItems": 10000,
+      "items": {
+        "type": "object", "required": ["id", "request"], "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$"},
+          "request": {"$ref": "urn:emulateqpu:schema:experiment.v1.json"}
+        }
+      }
+    }
+  },
+  "$comment": "Task ids must additionally be unique. The application validates each experiment and its resource plan before dispatch."
+}

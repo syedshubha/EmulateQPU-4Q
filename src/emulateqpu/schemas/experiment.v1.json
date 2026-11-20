@@ -1,0 +1,228 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:emulateqpu:schema:experiment.v1.json",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "emulateqpu.experiment.v1"
+    },
+    "name": {
+      "type": "string"
+    },
+    "engine": {
+      "enum": [
+        "chain",
+        "cavity"
+      ]
+    },
+    "device": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "const": "emulateqpu.device.v1"
+        },
+        "cell": {
+          "type": "object"
+        },
+        "topology": {
+          "type": "array"
+        },
+        "geometry": {},
+        "extraction_identity": {},
+        "parameter_origin": {
+          "enum": [
+            "extracted",
+            "assumed",
+            "supplied_fit",
+            "calibrated"
+          ]
+        }
+      },
+      "required": [
+        "schema",
+        "cell",
+        "topology",
+        "geometry",
+        "extraction_identity",
+        "parameter_origin"
+      ],
+      "additionalProperties": false
+    },
+    "model": {
+      "type": "object",
+      "properties": {
+        "dimensions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "excitation_cap": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "cap_exempt": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "encoding": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "enum": [
+                "dressed",
+                "bare"
+              ]
+            },
+            "labels": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "labels"
+          ],
+          "additionalProperties": false
+        },
+        "basis_order": {
+          "const": "lexicographic local levels; first mode most significant"
+        }
+      },
+      "required": [
+        "dimensions",
+        "excitation_cap",
+        "encoding",
+        "basis_order"
+      ],
+      "additionalProperties": false
+    },
+    "initial": {
+      "type": "object"
+    },
+    "schedule": {
+      "type": "object"
+    },
+    "program": {
+      "type": "object"
+    },
+    "measurement": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "noise": {
+      "type": "null"
+    },
+    "solver": {
+      "type": "object",
+      "properties": {
+        "rtol": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "atol": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "samples": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 20000
+        }
+      },
+      "required": [
+        "rtol",
+        "atol",
+        "samples"
+      ],
+      "additionalProperties": false
+    },
+    "resources": {
+      "type": "object",
+      "properties": {
+        "memory_mb": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "wall_time_s": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "numerical_threads": {
+          "const": 1
+        },
+        "max_branches": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 256
+        },
+        "max_columns": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_output_mb": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "required": [
+        "memory_mb",
+        "wall_time_s",
+        "numerical_threads"
+      ],
+      "additionalProperties": false
+    },
+    "observables": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "populations",
+          "measurement",
+          "states"
+        ]
+      }
+    },
+    "metrics": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "calibration": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295
+    },
+    "cavity": {
+      "type": "object"
+    },
+    "purpose": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "engine",
+    "resources"
+  ],
+  "additionalProperties": false
+}

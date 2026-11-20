@@ -1,0 +1,821 @@
+{
+  "scope": "Fixed four-qubit ideal geometry, electrostatic grounded-terminal solve only",
+  "date_utc": "2026-11-20",
+  "platform": "Apple Silicon macOS, 16 GiB",
+  "gmsh": "4.15.2",
+  "design_sha256": "2298c0b55dc8ae278ab1a043ca8e993438f8faf6b287d335fd4ab532dc2a4729",
+  "terminal_order": [
+    "q0_a",
+    "q0_b",
+    "q1_a",
+    "q1_b",
+    "q2_a",
+    "q2_b",
+    "q3_a",
+    "q3_b",
+    "q4_a",
+    "q4_b",
+    "q5_a",
+    "q5_b",
+    "q6_a",
+    "q6_b"
+  ],
+  "mode_order": [
+    "q0",
+    "c01",
+    "q1",
+    "c12",
+    "q2",
+    "c23",
+    "q3"
+  ],
+  "thresholds": {
+    "terminal_C_relative_frobenius": 0.02,
+    "differential_EC_relative_frobenius": 0.02,
+    "differential_EC_diagonal_max_relative": 0.02
+  },
+  "electrostatic_mesh_qualified": false,
+  "electrodynamic_mesh_qualified": false,
+  "physical_device_validated": false,
+  "campaigns": {
+    "p1": {
+      "order": 1,
+      "assembly": "default",
+      "runs": {
+        "ladder-coarse": {
+          "input_tetrahedra": 36846,
+          "mesh_settings": {
+            "conductor_edge_mm": 0.018,
+            "bulk_mm": 0.55,
+            "near_edge_mm": 0.006,
+            "influence_mm": 0.09,
+            "samples_per_curve": 500,
+            "maximum_tetrahedra": 200000
+          },
+          "mesh_sha256": "73b25f97d51133946c0f53a31e938fac824c216080de277abcc6b6c79e47052b",
+          "config_sha256": "393cd29e273080f7ce0f8743dde50d5a4b735db15478a09eda4cff01dcc29aa3",
+          "status": "COMPLETE",
+          "elapsed_s": 6.732756582903676,
+          "observed_peak_rss_bytes": 274808832,
+          "resource_stop": null,
+          "returncode": 0,
+          "solved_tetrahedra": 36876,
+          "mpi_ranks": 2,
+          "git_tag": "b676277",
+          "terminal_solves": 14,
+          "solver_binary_sha256": "317a593e47a0014f78fce1056a336cfa19ae8924381d323c0ed5754ec31c2c27",
+          "capacitance_file": "p1-coarse-terminal-C.csv",
+          "capacitance_sha256": "86806daf494395962dbc05f52e5c50171fdb80f121c32a60f16f18cb7beffc8b",
+          "matrix_checks": {
+            "C_reciprocity_relative_max": 0.0,
+            "C_positive_mutual_max_F": 0.0,
+            "C_min_eigenvalue_F": 1.3544873477602626e-13,
+            "EC_min_eigenvalue_GHz": 0.06438787020483171
+          }
+        },
+        "ladder-medium": {
+          "input_tetrahedra": 59999,
+          "mesh_settings": {
+            "conductor_edge_mm": 0.012,
+            "bulk_mm": 0.44,
+            "near_edge_mm": 0.006,
+            "influence_mm": 0.09,
+            "samples_per_curve": 500,
+            "maximum_tetrahedra": 200000
+          },
+          "mesh_sha256": "aed7265d676fe0b05c705fec5089a0ca86ae36376d21033d3658a0baafcea4dd",
+          "config_sha256": "393cd29e273080f7ce0f8743dde50d5a4b735db15478a09eda4cff01dcc29aa3",
+          "status": "COMPLETE",
+          "elapsed_s": 11.888726542005315,
+          "observed_peak_rss_bytes": 383205376,
+          "resource_stop": null,
+          "returncode": 0,
+          "solved_tetrahedra": 59999,
+          "mpi_ranks": 2,
+          "git_tag": "b676277",
+          "terminal_solves": 14,
+          "solver_binary_sha256": "317a593e47a0014f78fce1056a336cfa19ae8924381d323c0ed5754ec31c2c27",
+          "capacitance_file": "p1-medium-terminal-C.csv",
+          "capacitance_sha256": "09812145fc46ffd92d2a6da5fba5ff15b16e28459494a3b87c717b48a0a0a38a",
+          "matrix_checks": {
+            "C_reciprocity_relative_max": 0.0,
+            "C_positive_mutual_max_F": 0.0,
+            "C_min_eigenvalue_F": 1.2887511987655642e-13,
+            "EC_min_eigenvalue_GHz": 0.07399240607753338
+          }
+        },
+        "ladder-fine": {
+          "input_tetrahedra": 121184,
+          "mesh_settings": {
+            "conductor_edge_mm": 0.008,
+            "bulk_mm": 0.35,
+            "near_edge_mm": 0.006,
+            "influence_mm": 0.09,
+            "samples_per_curve": 500,
+            "maximum_tetrahedra": 200000
+          },
+          "mesh_sha256": "ae553042640130557e8f56547e3b9e2dd690ed13416c565dda6742cfe2125f7a",
+          "config_sha256": "393cd29e273080f7ce0f8743dde50d5a4b735db15478a09eda4cff01dcc29aa3",
+          "status": "COMPLETE",
+          "elapsed_s": 27.489396082935855,
+          "observed_peak_rss_bytes": 685096960,
+          "resource_stop": null,
+          "returncode": 0,
+          "solved_tetrahedra": 121184,
+          "mpi_ranks": 2,
+          "git_tag": "b676277",
+          "terminal_solves": 14,
+          "solver_binary_sha256": "317a593e47a0014f78fce1056a336cfa19ae8924381d323c0ed5754ec31c2c27",
+          "capacitance_file": "p1-fine-terminal-C.csv",
+          "capacitance_sha256": "59616dc5d57030246a54b0980d346d86e12aabcd9592d76614a81b84b8b12a85",
+          "matrix_checks": {
+            "C_reciprocity_relative_max": 0.0,
+            "C_positive_mutual_max_F": 0.0,
+            "C_min_eigenvalue_F": 1.231129528034229e-13,
+            "EC_min_eigenvalue_GHz": 0.08606898579684619
+          }
+        }
+      },
+      "intervals": [
+        {
+          "from": "ladder-coarse",
+          "to": "ladder-medium",
+          "metrics": {
+            "terminal_C_relative_frobenius": 0.20160039902459514,
+            "differential_EC_relative_frobenius": 0.17032527673972936,
+            "differential_EC_diagonal_max_relative": 0.20844664668983534
+          },
+          "passed": false,
+          "terminal_C_max_absolute_delta_fF": 80.54644454420003,
+          "differential_EC_diagonal_relative_by_mode": {
+            "q0": 0.20844664668983534,
+            "c01": 0.1588932805265469,
+            "q1": 0.006536234364903392,
+            "c12": 0.19249020451139498,
+            "q2": 0.1705496947923816,
+            "c23": 0.1954951738131498,
+            "q3": 0.14801874161512532
+          },
+          "differential_EC_nearest_neighbors": [
+            {
+              "modes": [
+                "q0",
+                "c01"
+              ],
+              "coarse_MHz": -5.480681954316371,
+              "fine_MHz": -5.172832068236567,
+              "delta_MHz": 0.30784988607980396
+            },
+            {
+              "modes": [
+                "c01",
+                "q1"
+              ],
+              "coarse_MHz": -4.56165381514129,
+              "fine_MHz": -4.883499471189274,
+              "delta_MHz": -0.3218456560479836
+            },
+            {
+              "modes": [
+                "q1",
+                "c12"
+              ],
+              "coarse_MHz": -4.941470432915403,
+              "fine_MHz": -4.9672319812594345,
+              "delta_MHz": -0.025761548344031653
+            },
+            {
+              "modes": [
+                "c12",
+                "q2"
+              ],
+              "coarse_MHz": -3.963897507367823,
+              "fine_MHz": -5.505142731416271,
+              "delta_MHz": -1.5412452240484475
+            },
+            {
+              "modes": [
+                "q2",
+                "c23"
+              ],
+              "coarse_MHz": -5.353800524646247,
+              "fine_MHz": -6.108197367843247,
+              "delta_MHz": -0.7543968431970002
+            },
+            {
+              "modes": [
+                "c23",
+                "q3"
+              ],
+              "coarse_MHz": -3.5161678343395417,
+              "fine_MHz": -3.9913880720300106,
+              "delta_MHz": -0.475220237690469
+            }
+          ],
+          "differential_EC_nearest_neighbor_max_absolute_delta_MHz": 1.5412452240484475
+        },
+        {
+          "from": "ladder-medium",
+          "to": "ladder-fine",
+          "metrics": {
+            "terminal_C_relative_frobenius": 0.1301764494022231,
+            "differential_EC_relative_frobenius": 0.10981265948265176,
+            "differential_EC_diagonal_max_relative": 0.16332126780329598
+          },
+          "passed": false,
+          "terminal_C_max_absolute_delta_fF": 56.4795750268,
+          "differential_EC_diagonal_relative_by_mode": {
+            "q0": 0.06525947338050088,
+            "c01": 0.12758791430044175,
+            "q1": 0.16332126780329598,
+            "c12": 0.06623018839426945,
+            "q2": 0.059155881775118255,
+            "c23": 0.09951107074956714,
+            "q3": 0.1407917216335198
+          },
+          "differential_EC_nearest_neighbors": [
+            {
+              "modes": [
+                "q0",
+                "c01"
+              ],
+              "coarse_MHz": -5.172832068236567,
+              "fine_MHz": -5.444289609961504,
+              "delta_MHz": -0.27145754172493675
+            },
+            {
+              "modes": [
+                "c01",
+                "q1"
+              ],
+              "coarse_MHz": -4.883499471189274,
+              "fine_MHz": -5.841919554872713,
+              "delta_MHz": -0.9584200836834392
+            },
+            {
+              "modes": [
+                "q1",
+                "c12"
+              ],
+              "coarse_MHz": -4.9672319812594345,
+              "fine_MHz": -4.838227087232244,
+              "delta_MHz": 0.12900489402719023
+            },
+            {
+              "modes": [
+                "c12",
+                "q2"
+              ],
+              "coarse_MHz": -5.505142731416271,
+              "fine_MHz": -5.017661293443398,
+              "delta_MHz": 0.4874814379728729
+            },
+            {
+              "modes": [
+                "q2",
+                "c23"
+              ],
+              "coarse_MHz": -6.108197367843247,
+              "fine_MHz": -6.118813190027613,
+              "delta_MHz": -0.010615822184365138
+            },
+            {
+              "modes": [
+                "c23",
+                "q3"
+              ],
+              "coarse_MHz": -3.9913880720300106,
+              "fine_MHz": -4.171228185119916,
+              "delta_MHz": -0.1798401130899052
+            }
+          ],
+          "differential_EC_nearest_neighbor_max_absolute_delta_MHz": 0.9584200836834392
+        }
+      ],
+      "screen_passed": false
+    },
+    "p2-assembled": {
+      "order": 2,
+      "assembly": "full",
+      "runs": {
+        "ladder-coarse": {
+          "input_tetrahedra": 36846,
+          "mesh_settings": {
+            "conductor_edge_mm": 0.018,
+            "bulk_mm": 0.55,
+            "near_edge_mm": 0.006,
+            "influence_mm": 0.09,
+            "samples_per_curve": 500,
+            "maximum_tetrahedra": 200000
+          },
+          "mesh_sha256": "73b25f97d51133946c0f53a31e938fac824c216080de277abcc6b6c79e47052b",
+          "config_sha256": "de4e0ace1eab3b04695f4412c3ed521fa3cf9bfb9b0d92f3a07921ea968b600d",
+          "status": "COMPLETE",
+          "elapsed_s": 40.402845500037074,
+          "observed_peak_rss_bytes": 897482752,
+          "resource_stop": null,
+          "returncode": 0,
+          "solved_tetrahedra": 36876,
+          "mpi_ranks": 2,
+          "git_tag": "b676277",
+          "terminal_solves": 14,
+          "solver_binary_sha256": "317a593e47a0014f78fce1056a336cfa19ae8924381d323c0ed5754ec31c2c27",
+          "capacitance_file": "p2-assembled-coarse-terminal-C.csv",
+          "capacitance_sha256": "fa87c971bec8e6b3625025f04d5899aeec7c0f4945db1d9675572dc70b57390a",
+          "matrix_checks": {
+            "C_reciprocity_relative_max": 0.0,
+            "C_positive_mutual_max_F": 0.0,
+            "C_min_eigenvalue_F": 1.0107935737567414e-13,
+            "EC_min_eigenvalue_GHz": 0.1386733745293211
+          }
+        },
+        "ladder-medium": {
+          "input_tetrahedra": 59999,
+          "mesh_settings": {
+            "conductor_edge_mm": 0.012,
+            "bulk_mm": 0.44,
+            "near_edge_mm": 0.006,
+            "influence_mm": 0.09,
+            "samples_per_curve": 500,
+            "maximum_tetrahedra": 200000
+          },
+          "mesh_sha256": "aed7265d676fe0b05c705fec5089a0ca86ae36376d21033d3658a0baafcea4dd",
+          "config_sha256": "de4e0ace1eab3b04695f4412c3ed521fa3cf9bfb9b0d92f3a07921ea968b600d",
+          "status": "COMPLETE",
+          "elapsed_s": 81.4214578330284,
+          "observed_peak_rss_bytes": 1340571648,
+          "resource_stop": null,
+          "returncode": 0,
+          "solved_tetrahedra": 59999,
+          "mpi_ranks": 2,
+          "git_tag": "b676277",
+          "terminal_solves": 14,
+          "solver_binary_sha256": "317a593e47a0014f78fce1056a336cfa19ae8924381d323c0ed5754ec31c2c27",
+          "capacitance_file": "p2-assembled-medium-terminal-C.csv",
+          "capacitance_sha256": "c336398459987eeeff91e3b3d5c6d328faa52c622122945ad23ff6ebad05b560",
+          "matrix_checks": {
+            "C_reciprocity_relative_max": 0.0,
+            "C_positive_mutual_max_F": 0.0,
+            "C_min_eigenvalue_F": 9.935365347561136e-14,
+            "EC_min_eigenvalue_GHz": 0.1479447654629042
+          }
+        },
+        "ladder-fine": {
+          "input_tetrahedra": 121184,
+          "mesh_settings": {
+            "conductor_edge_mm": 0.008,
+            "bulk_mm": 0.35,
+            "near_edge_mm": 0.006,
+            "influence_mm": 0.09,
+            "samples_per_curve": 500,
+            "maximum_tetrahedra": 200000
+          },
+          "mesh_sha256": "ae553042640130557e8f56547e3b9e2dd690ed13416c565dda6742cfe2125f7a",
+          "config_sha256": "de4e0ace1eab3b04695f4412c3ed521fa3cf9bfb9b0d92f3a07921ea968b600d",
+          "status": "COMPLETE",
+          "elapsed_s": 207.3801047920715,
+          "observed_peak_rss_bytes": 2100281344,
+          "resource_stop": null,
+          "returncode": 0,
+          "solved_tetrahedra": 121184,
+          "mpi_ranks": 2,
+          "git_tag": "b676277",
+          "terminal_solves": 14,
+          "solver_binary_sha256": "317a593e47a0014f78fce1056a336cfa19ae8924381d323c0ed5754ec31c2c27",
+          "capacitance_file": "p2-assembled-fine-terminal-C.csv",
+          "capacitance_sha256": "f73c80e5fd0cbe366e6489336e2b7cab8a1d1c7e463864c2c8f010bd7407fd52",
+          "matrix_checks": {
+            "C_reciprocity_relative_max": 0.0,
+            "C_positive_mutual_max_F": 0.0,
+            "C_min_eigenvalue_F": 9.731336653148907e-14,
+            "EC_min_eigenvalue_GHz": 0.15819195528436047
+          }
+        }
+      },
+      "intervals": [
+        {
+          "from": "ladder-coarse",
+          "to": "ladder-medium",
+          "metrics": {
+            "terminal_C_relative_frobenius": 0.08263064244849394,
+            "differential_EC_relative_frobenius": 0.08093806777301872,
+            "differential_EC_diagonal_max_relative": 0.09926787419906553
+          },
+          "passed": false,
+          "terminal_C_max_absolute_delta_fF": 17.016132566599993,
+          "differential_EC_diagonal_relative_by_mode": {
+            "q0": 0.09926787419906553,
+            "c01": 0.07531314208385843,
+            "q1": 0.007626350567330615,
+            "c12": 0.09358058686283609,
+            "q2": 0.07047095653992927,
+            "c23": 0.09635093822888205,
+            "q3": 0.0789020063240778
+          },
+          "differential_EC_nearest_neighbors": [
+            {
+              "modes": [
+                "q0",
+                "c01"
+              ],
+              "coarse_MHz": -7.787983577943648,
+              "fine_MHz": -7.299157504731147,
+              "delta_MHz": 0.48882607321250066
+            },
+            {
+              "modes": [
+                "c01",
+                "q1"
+              ],
+              "coarse_MHz": -7.258958110574679,
+              "fine_MHz": -7.522104866537477,
+              "delta_MHz": -0.26314675596279813
+            },
+            {
+              "modes": [
+                "q1",
+                "c12"
+              ],
+              "coarse_MHz": -7.518565418828634,
+              "fine_MHz": -7.467294012151712,
+              "delta_MHz": 0.05127140667692161
+            },
+            {
+              "modes": [
+                "c12",
+                "q2"
+              ],
+              "coarse_MHz": -6.6822826869514875,
+              "fine_MHz": -7.583263684358967,
+              "delta_MHz": -0.9009809974074804
+            },
+            {
+              "modes": [
+                "q2",
+                "c23"
+              ],
+              "coarse_MHz": -8.067896806251195,
+              "fine_MHz": -8.27963489190871,
+              "delta_MHz": -0.21173808565751356
+            },
+            {
+              "modes": [
+                "c23",
+                "q3"
+              ],
+              "coarse_MHz": -6.289655525978534,
+              "fine_MHz": -6.547795539056043,
+              "delta_MHz": -0.25814001307750917
+            }
+          ],
+          "differential_EC_nearest_neighbor_max_absolute_delta_MHz": 0.9009809974074804
+        },
+        {
+          "from": "ladder-medium",
+          "to": "ladder-fine",
+          "metrics": {
+            "terminal_C_relative_frobenius": 0.05594712066572208,
+            "differential_EC_relative_frobenius": 0.05289843036376195,
+            "differential_EC_diagonal_max_relative": 0.0784133951122147
+          },
+          "passed": false,
+          "terminal_C_max_absolute_delta_fF": 13.049034147100006,
+          "differential_EC_diagonal_relative_by_mode": {
+            "q0": 0.039124452559248304,
+            "c01": 0.05905873137392358,
+            "q1": 0.0784133951122147,
+            "c12": 0.03562773091964442,
+            "q2": 0.035219142812302706,
+            "c23": 0.04356238044947075,
+            "q3": 0.06418066912781908
+          },
+          "differential_EC_nearest_neighbors": [
+            {
+              "modes": [
+                "q0",
+                "c01"
+              ],
+              "coarse_MHz": -7.299157504731147,
+              "fine_MHz": -7.443092427133902,
+              "delta_MHz": -0.14393492240275407
+            },
+            {
+              "modes": [
+                "c01",
+                "q1"
+              ],
+              "coarse_MHz": -7.522104866537477,
+              "fine_MHz": -7.8756454041058985,
+              "delta_MHz": -0.35354053756842146
+            },
+            {
+              "modes": [
+                "q1",
+                "c12"
+              ],
+              "coarse_MHz": -7.467294012151712,
+              "fine_MHz": -7.137907547376513,
+              "delta_MHz": 0.32938646477519934
+            },
+            {
+              "modes": [
+                "c12",
+                "q2"
+              ],
+              "coarse_MHz": -7.583263684358967,
+              "fine_MHz": -7.236158648083026,
+              "delta_MHz": 0.3471050362759418
+            },
+            {
+              "modes": [
+                "q2",
+                "c23"
+              ],
+              "coarse_MHz": -8.27963489190871,
+              "fine_MHz": -8.084821392415146,
+              "delta_MHz": 0.1948134994935631
+            },
+            {
+              "modes": [
+                "c23",
+                "q3"
+              ],
+              "coarse_MHz": -6.547795539056043,
+              "fine_MHz": -6.543363625558403,
+              "delta_MHz": 0.0044319134976404315
+            }
+          ],
+          "differential_EC_nearest_neighbor_max_absolute_delta_MHz": 0.35354053756842146
+        }
+      ],
+      "screen_passed": false
+    }
+  },
+  "additional_diagnostics": {
+    "p1-amr-1-rank": {
+      "mesh_sha256": "73b25f97d51133946c0f53a31e938fac824c216080de277abcc6b6c79e47052b",
+      "refinement": {
+        "MaxIts": 2,
+        "UpdateFraction": 0.5,
+        "MaxSize": 120000,
+        "SaveAdaptIterations": true,
+        "SaveAdaptMesh": true
+      },
+      "status": "FAILED",
+      "elapsed_s": 1.1115939170122147,
+      "returncode": 139,
+      "error": "Palace terminated with SIGSEGV"
+    },
+    "p1-amr-2-rank": {
+      "mesh_sha256": "73b25f97d51133946c0f53a31e938fac824c216080de277abcc6b6c79e47052b",
+      "refinement": {
+        "MaxIts": 2,
+        "UpdateFraction": 0.5,
+        "MaxSize": 120000,
+        "SaveAdaptIterations": true,
+        "SaveAdaptMesh": true
+      },
+      "status": "FAILED",
+      "elapsed_s": 1.568632584065199,
+      "returncode": 139,
+      "error": "Palace terminated with SIGSEGV"
+    },
+    "stock-versus-local-h1-p2-ladder-coarse": {
+      "scope": "Same mesh with official full assembly compared to a local H1-only partial assembly build",
+      "interval": {
+        "metrics": {
+          "terminal_C_relative_frobenius": 1.3180369471083474e-13,
+          "differential_EC_relative_frobenius": 7.313708657539219e-14,
+          "differential_EC_diagonal_max_relative": 1.9150086976408528e-13
+        },
+        "passed": true,
+        "terminal_C_max_absolute_delta_fF": 9.998969745857369e-11,
+        "differential_EC_diagonal_relative_by_mode": {
+          "q0": 0.0,
+          "c01": 0.0,
+          "q1": 4.856008359332317e-15,
+          "c12": 1.9150086976408528e-13,
+          "q2": 5.408671680608575e-16,
+          "c23": 0.0,
+          "q3": 0.0
+        },
+        "differential_EC_nearest_neighbors": [
+          {
+            "modes": [
+              "q0",
+              "c01"
+            ],
+            "coarse_MHz": -7.787983577943648,
+            "fine_MHz": -7.787983577943648,
+            "delta_MHz": 0.0
+          },
+          {
+            "modes": [
+              "c01",
+              "q1"
+            ],
+            "coarse_MHz": -7.258958110574649,
+            "fine_MHz": -7.258958110574679,
+            "delta_MHz": -3.0357660829594124e-14
+          },
+          {
+            "modes": [
+              "q1",
+              "c12"
+            ],
+            "coarse_MHz": -7.5185654188332665,
+            "fine_MHz": -7.518565418828634,
+            "delta_MHz": 4.632579042596063e-12
+          },
+          {
+            "modes": [
+              "c12",
+              "q2"
+            ],
+            "coarse_MHz": -6.682282686949986,
+            "fine_MHz": -6.6822826869514875,
+            "delta_MHz": -1.5014031684579265e-12
+          },
+          {
+            "modes": [
+              "q2",
+              "c23"
+            ],
+            "coarse_MHz": -8.067896806251195,
+            "fine_MHz": -8.067896806251195,
+            "delta_MHz": -1.734723475976807e-15
+          },
+          {
+            "modes": [
+              "c23",
+              "q3"
+            ],
+            "coarse_MHz": -6.289655525978534,
+            "fine_MHz": -6.289655525978534,
+            "delta_MHz": 0.0
+          }
+        ],
+        "differential_EC_nearest_neighbor_max_absolute_delta_MHz": 4.632579042596063e-12
+      },
+      "local_h1_table_sha256": "84ef1f09d019b4ae7d2835a24238f59582963b57a9b428776af40c36d6dac1a1"
+    },
+    "stock-versus-local-h1-p2-ladder-medium": {
+      "scope": "Same mesh with official full assembly compared to a local H1-only partial assembly build",
+      "interval": {
+        "metrics": {
+          "terminal_C_relative_frobenius": 2.0023150584566348e-26,
+          "differential_EC_relative_frobenius": 0.0,
+          "differential_EC_diagonal_max_relative": 0.0
+        },
+        "passed": true,
+        "terminal_C_max_absolute_delta_fF": 9.998589644201293e-24,
+        "differential_EC_diagonal_relative_by_mode": {
+          "q0": 0.0,
+          "c01": 0.0,
+          "q1": 0.0,
+          "c12": 0.0,
+          "q2": 0.0,
+          "c23": 0.0,
+          "q3": 0.0
+        },
+        "differential_EC_nearest_neighbors": [
+          {
+            "modes": [
+              "q0",
+              "c01"
+            ],
+            "coarse_MHz": -7.299157504731147,
+            "fine_MHz": -7.299157504731147,
+            "delta_MHz": 0.0
+          },
+          {
+            "modes": [
+              "c01",
+              "q1"
+            ],
+            "coarse_MHz": -7.522104866537477,
+            "fine_MHz": -7.522104866537477,
+            "delta_MHz": 0.0
+          },
+          {
+            "modes": [
+              "q1",
+              "c12"
+            ],
+            "coarse_MHz": -7.467294012151712,
+            "fine_MHz": -7.467294012151712,
+            "delta_MHz": 0.0
+          },
+          {
+            "modes": [
+              "c12",
+              "q2"
+            ],
+            "coarse_MHz": -7.583263684358967,
+            "fine_MHz": -7.583263684358967,
+            "delta_MHz": 0.0
+          },
+          {
+            "modes": [
+              "q2",
+              "c23"
+            ],
+            "coarse_MHz": -8.27963489190871,
+            "fine_MHz": -8.27963489190871,
+            "delta_MHz": 0.0
+          },
+          {
+            "modes": [
+              "c23",
+              "q3"
+            ],
+            "coarse_MHz": -6.547795539056043,
+            "fine_MHz": -6.547795539056043,
+            "delta_MHz": 0.0
+          }
+        ],
+        "differential_EC_nearest_neighbor_max_absolute_delta_MHz": 0.0
+      },
+      "local_h1_table_sha256": "75155aa1ac5bc885cae89646e9fb0b3c6ab590d050efcc5f7ca4e831d67c4ee1"
+    },
+    "stock-versus-local-h1-p2-ladder-fine": {
+      "scope": "Same mesh with official full assembly compared to a local H1-only partial assembly build",
+      "interval": {
+        "metrics": {
+          "terminal_C_relative_frobenius": 2.1079032637240374e-24,
+          "differential_EC_relative_frobenius": 0.0,
+          "differential_EC_diagonal_max_relative": 0.0
+        },
+        "passed": true,
+        "terminal_C_max_absolute_delta_fF": 1.0002722241528403e-21,
+        "differential_EC_diagonal_relative_by_mode": {
+          "q0": 0.0,
+          "c01": 0.0,
+          "q1": 0.0,
+          "c12": 0.0,
+          "q2": 0.0,
+          "c23": 0.0,
+          "q3": 0.0
+        },
+        "differential_EC_nearest_neighbors": [
+          {
+            "modes": [
+              "q0",
+              "c01"
+            ],
+            "coarse_MHz": -7.443092427133902,
+            "fine_MHz": -7.443092427133902,
+            "delta_MHz": 0.0
+          },
+          {
+            "modes": [
+              "c01",
+              "q1"
+            ],
+            "coarse_MHz": -7.8756454041058985,
+            "fine_MHz": -7.8756454041058985,
+            "delta_MHz": 0.0
+          },
+          {
+            "modes": [
+              "q1",
+              "c12"
+            ],
+            "coarse_MHz": -7.137907547376513,
+            "fine_MHz": -7.137907547376513,
+            "delta_MHz": 0.0
+          },
+          {
+            "modes": [
+              "c12",
+              "q2"
+            ],
+            "coarse_MHz": -7.236158648083026,
+            "fine_MHz": -7.236158648083026,
+            "delta_MHz": 0.0
+          },
+          {
+            "modes": [
+              "q2",
+              "c23"
+            ],
+            "coarse_MHz": -8.084821392415146,
+            "fine_MHz": -8.084821392415146,
+            "delta_MHz": 0.0
+          },
+          {
+            "modes": [
+              "c23",
+              "q3"
+            ],
+            "coarse_MHz": -6.543363625558403,
+            "fine_MHz": -6.543363625558403,
+            "delta_MHz": 0.0
+          }
+        ],
+        "differential_EC_nearest_neighbor_max_absolute_delta_MHz": 0.0
+      },
+      "local_h1_table_sha256": "d11ad753e7dcc8923611e874b284a2596fc826aea8318f9be69b1cbc1d7e29b6"
+    }
+  }
+}

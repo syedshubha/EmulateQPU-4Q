@@ -1,0 +1,14 @@
+EmulateQPU-4Q
+
+Copyright 2026 EmulateQPU rightsholder
+
+This project includes original EmulateQPU software, including the finite-pulse
+engine derived from emulateqpu-chain and its transmon kernel, the digital twin
+chain conductor geometry and capacitance reduction, and the upstream EmulateQPU
+product and field workflow adapters. Its native field overlap helper derives
+from the EmulateQPU common-point MFEM overlap and exact-field evaluators.
+This distribution adapts those parts for a standalone four-qubit workflow.
+
+The original software is licensed under Apache-2.0. Original project
+documentation and numerical benchmark data are licensed under CC BY 4.0. Code snippets use the software
+license. Third-party components retain their own license and attribution terms.

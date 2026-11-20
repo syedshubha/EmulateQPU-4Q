@@ -1,0 +1,14 @@
+{
+  "schema": "emulateqpu.chain.cell.v1",
+  "name": "two_data_engineering_example",
+  "mode_labels": ["q0", "c01", "q1"],
+  "mode_roles": ["data", "coupler", "data"],
+  "EC_matrix_GHz": [[0.25, 0.0012, 0.0001], [0.0012, 0.30, 0.0010], [0.0001, 0.0010, 0.26]],
+  "EJ_idle_GHz": [14.0, 9.0, 15.0],
+  "idle_flux_Phi0": [0.0, 0.20, 0.0],
+  "ncut": 24,
+  "lines": {"c01": {"tau_ns": 0.15, "gain": 1.0, "settling_time_constants": 5.0, "rise_fraction": 0.2}},
+  "parameter_origin": "assumed_circuit",
+  "provenance": {"kind": "declared engineering example", "geometry_extracted": false},
+  "assumptions": {"purpose": "Small install-and-run pulse example, not a calibrated gate or extracted new geometry.", "physical_validation": false, "closed_system": true}
+}

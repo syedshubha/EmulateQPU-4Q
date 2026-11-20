@@ -1,0 +1,2 @@
+# Preserve solver-written bytes for the checked capacitance files.
+reproducibility/mesh-ladder/*-terminal-C.csv -text

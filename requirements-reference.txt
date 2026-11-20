@@ -1,0 +1,3 @@
+# The scqubits macOS requirement caps SciPy to 1.13.1, whose wheels support Python 3.11.
+qutip==5.3.1
+scqubits==4.3.1

@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=80.9.0", "wheel>=0.45.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "emulateqpu-4q"
+version = "0.1.0"
+description = "Four-qubit superconducting-circuit and electrodynamic field modeling"
+readme = "README.md"
+license = "Apache-2.0 AND CC-BY-4.0"
+license-files = ["LICENSE.md", "LICENSES/*.txt", "NOTICE", "THIRD_PARTY.md"]
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26.4",
+    "scipy>=1.13.1",
+    "jsonschema>=4.23.0",
+    "threadpoolctl>=3.5.0",
+    "psutil>=7.2.1",
+]
+
+[project.optional-dependencies]
+physical = ["shapely>=2.0.7", "gmsh>=4.13.1"]
+
+[dependency-groups]
+dev = ["ruff>=0.14.13"]
+
+[project.scripts]
+emulateqpu = "emulateqpu.cli:main"
+
+[tool.setuptools]
+include-package-data = false
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["emulateqpu", "emulateqpu.*"]
+namespaces = false
+
+[tool.setuptools.package-data]
+emulateqpu = ["schemas/*.json", "examples/*.json"]
+"emulateqpu._physics" = ["configs/*.json"]
+
+[tool.ruff.lint]
+select = ["F"]
