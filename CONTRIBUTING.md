@@ -10,7 +10,10 @@ just test
 just build
 ```
 
-Use `just reference` to compare the numerical engine to scqubits and QuTiP.
+Run `just reference` after changing the circuit solver; it compares the numerical
+engine to scqubits and QuTiP.
 Record the solver build and mesh sizes when reporting a field discrepancy.
 Include reproducible commands and the first error for execution failures.
-Store generated simulations and site profiles outside the checkout.
+Store generated meshes, solver outputs, and site profiles outside the checkout.
+In documentation and reports, keep circuit verification, mesh qualification, and
+live scheduler tests distinct.
