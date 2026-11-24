@@ -10,7 +10,7 @@ from emulateqpu.io import digest, file_hash, read_json
 def main():
     root = Path(__file__).resolve().parent
     saved = read_json(root / "results.json")
-    design, _ = four_qubit_design()
+    design, _ = four_qubit_design(legacy=True)
     if digest(design) != saved["design_sha256"]:
         raise ValueError("The current chip design differs from the saved mesh study")
 

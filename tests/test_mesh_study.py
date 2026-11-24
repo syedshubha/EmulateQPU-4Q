@@ -1,8 +1,10 @@
 """Exercise mesh study contracts with synthetic matrices and launch receipts."""
 import csv
 import importlib.util
+import io
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
@@ -22,14 +24,16 @@ class MeshStudyTests(unittest.TestCase):
         self.binary = self.root / "palace"
         self.binary.write_text("Synthetic Palace executable identity", encoding="utf-8")
 
-    def _prepare(self, *, order=2, full_assembly=False):
-        def mesh(_, sheets, path, level):
-            path.write_text(level, encoding="utf-8")
-            groups = {name: number for number, name in enumerate(["enclosure", *sheets], 1)}
-            return groups, {"air": 501, "substrate": 514}, 1000 * (list(design.LADDER_MESHES).index(level) + 1)
+    @staticmethod
+    def _mesh(record, sheets, path, level):
+        path.write_text(level, encoding="utf-8")
+        bridges = [bridge["label"] for bridge in record.get("ground_bridges", [])]
+        groups = {name: number for number, name in enumerate(["enclosure", *sheets, *bridges], 1)}
+        return groups, {"air": 501, "substrate": 514}, 1000 * (list(design.LADDER_MESHES).index(level) + 1)
 
-        with patch.object(design, "_mesh_design", side_effect=mesh):
-            return mesh_study.prepare_study(self.study, order=order, full_assembly=full_assembly)
+    def _prepare(self, *, order=2, full_assembly=False, legacy=False):
+        with patch.object(design, "_mesh_design", side_effect=self._mesh):
+            return mesh_study.prepare_study(self.study, order=order, full_assembly=full_assembly, legacy=legacy)
 
     def _launch_plan(self, case, *, tag=design.PALACE_TAG, ranks=2):
         config = case / "electrostatic.json"
@@ -119,3 +123,32 @@ class MeshStudyTests(unittest.TestCase):
         (case / "mesh.msh").write_text("Changed mesh", encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "Palace input integrity"):
             mesh_study.analyze_study(self.study, self.root / "report")
+
+    def test_legacy_ladder_retains_its_original_mesh_cap(self):
+        self._prepare(legacy=True)
+        study, _ = mesh_study._study(self.study)
+        self.assertEqual([level["mesh_settings"]["maximum_tetrahedra"] for level in study["levels"]],
+                         [200_000] * len(design.LADDER_MESHES))
+
+    def test_shared_ladder_cli_preserves_one_design_across_levels(self):
+        frequencies = [6.40, 6.62, 6.84, 7.08]
+        shared_design, _ = design.four_qubit_design(readout_topology="shared", drive_gap_um=40,
+                                                    readout_frequencies_GHz=frequencies)
+        with patch.object(design, "_mesh_design", side_effect=self._mesh), redirect_stdout(io.StringIO()):
+            self.assertEqual(mesh_study.main(["prepare", str(self.study), "--readout-topology", "shared",
+                                              "--drive-gap-um", "40", "--readout-frequencies-ghz",
+                                              *map(str, frequencies)]), 0)
+        for level in design.LADDER_MESHES:
+            case = self.study / level
+            self.assertEqual(read_json(case / "design.json"), shared_design)
+            static = read_json(case / "electrostatic.json")["Boundaries"]
+            self.assertEqual(len(static["Terminal"]), 14)
+            surfaces = read_json(case / "field-inputs.json")["physical_surface_ids"]
+            self.assertTrue(all(surfaces[bridge["label"]] in static["Ground"]["Attributes"]
+                                for bridge in shared_design["ground_bridges"]))
+        self.assertEqual(len(mesh_study._study(self.study)[0]["levels"]), 3)
+
+    def test_legacy_and_shared_ladder_conflict_before_writing(self):
+        with self.assertRaises(ValueError):
+            mesh_study.prepare_study(self.study, legacy=True, readout_topology="shared")
+        self.assertFalse(self.study.exists())

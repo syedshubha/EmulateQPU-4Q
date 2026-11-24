@@ -42,6 +42,7 @@ SCHEDULE_SCHEMA = 'emulateqpu.chain.schedule.v2'
 ENVELOPES = ('square', 'cosine', 'flattop', 'gaussian', 'drag', 'sampled')
 FLUX_SHAPES = ('raised_cosine', 'sampled')
 MAX_SAMPLES = 20000
+CARRIER_STEPS_PER_CYCLE = 16
 
 
 def _samples(x, name, lo=-1., hi=1.):
@@ -203,15 +204,44 @@ def controls_at_time_v2(model, s, t, t0=0., prep=None):
     return phi, mw
 
 
-def _edges(s):
-    T = s['duration_ns']; e = {0., T}
-    for d in s['drives']:
-        e |= {d['start_ns'], d['start_ns']+d['duration_ns']}
-        if d['envelope'] == 'flattop': e |= {d['start_ns']+d['ramp_ns'], d['start_ns']+d['duration_ns']-d['ramp_ns']}
-    for f in s['flux']:
-        e.add(f['start_ns'])
-        if f['shape'] == 'sampled': e.add(f['start_ns']+(len(f['samples_Phi0'])-1)*f['dt_ns'])
-    return sorted(x for x in e if 0. <= x <= T)
+def _sampled_knot_indices(*channels):
+    """Indices where at least one uniformly sampled channel changes slope."""
+    differences = np.diff(np.asarray(channels, dtype=float), axis=1)
+    return 1 + np.flatnonzero(np.any(differences[:, 1:] != differences[:, :-1], axis=0))
+
+
+def integration_boundaries(schedule):
+    """Return pulse edges and the corners of sampled controls in schedule time.
+
+    The same boundaries are used by the integrator and its work estimate.
+    A step crossing several corners could miss the entire nonzero part of
+    a narrow waveform. Flat padding and equal adjacent slopes need no restart.
+    """
+    duration = float(schedule['duration_ns'])
+    boundaries = [[0., duration]]
+    for drive in schedule.get('drives', []):
+        start = float(drive.get('start_ns', 0.))
+        length = float(drive.get('duration_ns', duration-start))
+        end = start+length
+        boundaries.append([start, end])
+        if drive.get('envelope') == 'flattop':
+            ramp = float(drive.get('ramp_ns', 20.))
+            boundaries.append([start+ramp, end-ramp])
+        if drive.get('envelope') == 'sampled':
+            in_phase = drive['samples_I']
+            channels = (in_phase, drive['samples_Q']) if 'samples_Q' in drive else (in_phase,)
+            knots = _sampled_knot_indices(*channels)
+            boundaries.append(start+length*(knots/(len(in_phase)-1)))
+    for pulse in schedule.get('flux', []):
+        start = float(pulse.get('start_ns', 0.))
+        boundaries.append([start])
+        if pulse.get('shape') == 'sampled':
+            values = pulse['samples_Phi0']
+            spacing = float(pulse['dt_ns'])
+            knots = _sampled_knot_indices(values)
+            boundaries.append(start+spacing*np.r_[knots, len(values)-1])
+    edges = np.concatenate(boundaries)
+    return np.unique(edges[(edges >= 0.) & (edges <= duration)])
 
 
 def propagate_states(model, schedule, V, *, rtol=1e-10, atol=1e-12, samples=2, keep_states=False, carrier_time_offset_ns=0.):
@@ -219,8 +249,8 @@ def propagate_states(model, schedule, V, *, rtol=1e-10, atol=1e-12, samples=2, k
 
     Returns final (D x r), times, per-sample norms, and evidence. Flux-only schedules conserve the local-index parity
     exactly, so each column's even and odd parts are integrated as separate blocks (inherited algorithm). Any
-    microwave breaks parity, which selects full-space DOP853 with a carrier-resolving maximum step and restarts at
-    envelope edges.
+    microwave breaks parity, which selects full-space DOP853 with a carrier-resolving maximum step. Both paths
+    restart at pulse edges and sampled-control knots.
     """
     s = validate_schedule_v2(model, schedule)
     V = np.ascontiguousarray(np.asarray(V, complex))
@@ -246,7 +276,7 @@ def propagate_states(model, schedule, V, *, rtol=1e-10, atol=1e-12, samples=2, k
         num = np.real(np.sum(X.conj()*_real_spmm(Hb, X), axis=0))
         return np.where(nrm > 0, num/np.where(nrm > 0, nrm, 1.), 0.)
 
-    edges = _edges(s)
+    edges = integration_boundaries(s)
     Y = np.zeros((len(times), *V.shape), complex)
     nfev = 0
     if not s['drives']:
@@ -289,7 +319,7 @@ def propagate_states(model, schedule, V, *, rtol=1e-10, atol=1e-12, samples=2, k
             Z -= X*E
             return (-2j*np.pi*Z).ravel()
         carrier = max(d['frequency_GHz'] for d in s['drives'])
-        max_step = min(T, 1/(16*carrier)) if carrier > 0 else T
+        max_step = min(T, 1/(CARRIER_STEPS_PER_CYCLE*carrier)) if carrier > 0 else T
         Y[0] = V; y = V.ravel().copy()
         for lo, hi in zip(edges[:-1], edges[1:]):
             idx = np.flatnonzero((times > lo) & (times <= hi)); req = times[idx]

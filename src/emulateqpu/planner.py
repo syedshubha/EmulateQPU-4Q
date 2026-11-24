@@ -25,8 +25,11 @@ def basis_dimension(dimensions, cap=None, exempt=()):
 
 
 def _carrier_work(operations: list[dict[str, Any]]) -> CarrierWork:
-    """Report DOP853 work floors for one nonempty solve per driven stage."""
+    """Estimate DOP853 work for one propagated block per driven stage."""
+    import numpy as np
     from scipy.integrate import DOP853
+
+    from ._engine.evolve import CARRIER_STEPS_PER_CYCLE, integration_boundaries
 
     work: CarrierWork = {
         'stages': [],
@@ -41,15 +44,17 @@ def _carrier_work(operations: list[dict[str, Any]]) -> CarrierWork:
             schedule = operation.get('concurrent')
         else:
             continue
-        if schedule is None or not schedule.get('drives'):
+        if schedule is None or not (schedule.get('drives') or schedule.get('flux')):
             continue
         duration = float(schedule['duration_ns'])
-        carrier = max(float(pulse['frequency_GHz']) for pulse in schedule['drives'])
+        carrier = max((float(pulse['frequency_GHz']) for pulse in schedule.get('drives', [])), default=0.)
         # The carrier-resolved chain engine caps steps at 1/(16*f). A floor
         # avoids an off-by-one overestimate when a product is near an integer.
-        carrier_steps = duration * carrier * 16
-        steps = max(1, math.floor(carrier_steps))
-        max_step = 1 / (16 * carrier) if carrier_steps > 1 else duration
+        steps_per_ns = carrier * CARRIER_STEPS_PER_CYCLE
+        intervals = np.diff(integration_boundaries(schedule))
+        segmented_steps = int(np.maximum(1, np.floor(intervals * steps_per_ns)).sum())
+        steps = max(segmented_steps, math.floor(duration * steps_per_ns))
+        max_step = min(duration, 1 / steps_per_ns) if carrier > 0 else duration
         rhs = steps * DOP853.n_stages
         conditional = operation.get('condition') is not None
         work['stages'].append({

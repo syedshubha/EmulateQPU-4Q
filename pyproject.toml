@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-physical = ["shapely>=2.0.7", "gmsh>=4.13.1"]
+physical = ["shapely>=2.0.7", "gmsh>=4.13.1", "gdstk>=1.0.0"]
 
 [dependency-groups]
 dev = ["ruff>=0.14.13"]

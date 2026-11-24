@@ -1,12 +1,24 @@
 # Four-qubit electrostatic mesh qualification
 
-The mesh study uses one four-qubit chip geometry. The PEC enclosure, silicon substrate, fourteen island terminals, grounded auxiliary electrodes, and junction capacitances are fixed across the three levels. Gmsh refines near the island edges, the junction sheets, the drive pads, and the readout conductors. Each level uses its edge target inside a 6 µm band and transitions toward its bulk target over 90 µm from the edges. The three meshes are generated separately. [Gmsh size field reference](https://gmsh.info/doc/texinfo/gmsh.html#Mesh-size-fields)
+Each study binds one four-qubit chip geometry across all three levels. New
+studies default to the four-resonator, dedicated-feedline layout. Pass
+`--readout-topology shared` to `prepare` for the shared-feedline layout, or
+`--legacy` for the
+original single-readout layout used in the published diagnostic. The PEC
+enclosure, silicon substrate, fourteen island terminals, grounded auxiliary
+electrodes, and junction capacitances are fixed within each study. Gmsh
+refines near the island edges, the junction sheets, the drive pads, and the
+readout conductors. Each level uses its edge target inside a 6 µm band and
+transitions toward its bulk target over 90 µm from the edges. The three meshes
+are generated separately. [Gmsh size field reference](https://gmsh.info/doc/texinfo/gmsh.html#Mesh-size-fields)
 
-| Level | Edge target | Bulk target | Tetrahedra observed with Gmsh 4.15.2 |
-| --- | ---: | ---: | ---: |
-| `ladder-coarse` | 18 µm | 0.55 mm | 36,846 |
-| `ladder-medium` | 12 µm | 0.44 mm | 59,999 |
-| `ladder-fine` | 8 µm | 0.35 mm | 121,184 |
+| Level | Edge target | Bulk target | Dedicated-layout tetrahedra | Original layout tetrahedra |
+| --- | ---: | ---: | ---: | ---: |
+| `ladder-coarse` | 18 µm | 0.55 mm | 113,975 | 36,846 |
+| `ladder-medium` | 12 µm | 0.44 mm | 193,128 | 59,999 |
+| `ladder-fine` | 8 µm | 0.35 mm | 380,108 | 121,184 |
+
+These are input mesh counts observed with Gmsh 4.15.2.
 
 ## Run on a workstation
 
@@ -49,7 +61,7 @@ The analyzer uses the 14 × 14 terminal capacitance matrix $C$ and evaluates the
 
 The report also retains each matrix, the diagonal changes by mode, and signed off-diagonal $E_C/h$ changes in MHz for consecutive qubit–coupler pairs. A failed or incomplete study writes `mesh-report.json` and exits with status `2`. Only a completed preregistered P2 study with verified source binding and both intervals below every limit sets `electrostatic_mesh_qualified` to `true`. Underlying modes, electromagnetic response, and measurements have separate acceptance criteria. [Electrodynamic workflow](FULLWAVE.md)
 
-## Local diagnostic result
+## Local diagnostic result for the original layout
 
 Gmsh 4.15.2 generated all three levels on an Apple M1. Palace v0.15.0 (`b676277`), at P1 with two MPI ranks, completed all fourteen terminal solves at each level. Palace added 30 tetrahedra to the coarse mesh during geometric preprocessing and reported zero solution-adaptive iterations on all levels. The diagnostic result was `DIAGNOSTIC_NOT_CONVERGED`.
 

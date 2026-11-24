@@ -59,7 +59,8 @@ class FieldSlurmTests(unittest.TestCase):
             return subprocess.CompletedProcess(command, 0, lines if command[0] == "sacct" else "", "")
         return fake
 
-    def solve(self, table="m,Re{f} (GHz),Q\n1,5.1,inf\n2,7.2,5000\n", *, actual_ranks=2):
+    def solve(self, table="m,Re{f} (GHz),Q\n1,5.1,inf\n2,7.2,5000\n", *, actual_ranks=2,
+              cells=None, stdout=b""):
         def fake(command, **kwargs):
             self.assertEqual(command, ["srun", "--nodes=1", "--ntasks=2", "--cpus-per-task=1",
                                        "--kill-on-bad-exit=1", "--mpi=pmix", str(self.binary),
@@ -68,9 +69,14 @@ class FieldSlurmTests(unittest.TestCase):
             self.assertEqual(kwargs["cwd"], self.root)
             raw = (self.run_path / "raw")
             raw.mkdir()
-            atomic_json(raw / "palace.json", {"Problem": {"MPISize": actual_ranks}})
+            native = {"Problem": {"MPISize": actual_ranks}}
+            if cells is not None:
+                native["Problem"]["MeshElements"] = cells
+                native["ElapsedTime"] = {"Counts": {"Adaptation": 0}}
+            atomic_json(raw / "palace.json", native)
             (raw / "eig.csv").write_text(table)
             (raw / "domain-E.csv").write_text("m,E_elec (J)\n1,1.0e-4\n2,2.0e-4\n")
+            kwargs["stdout"].write(stdout)
             return subprocess.CompletedProcess(command, 0)
         env = {"SLURM_JOB_ID": "91", "SLURM_NTASKS": "2", "OMP_NUM_THREADS": "9"}
         return field_slurm._execute(self.run_path, runner=fake, environment=env)
@@ -116,6 +122,22 @@ class FieldSlurmTests(unittest.TestCase):
         spectrum.write_bytes(spectrum.read_bytes().replace(b"-45", b"nan"))
         with self.assertRaisesRegex(ValueError, "Invalid numeric"):
             field_slurm._check_csv(spectrum, 2)
+
+    def test_magnetostatic_plan_requires_flux_and_current_rows_for_each_source(self):
+        settings = read_json(self.config)
+        settings["Problem"]["Type"] = "Magnetostatic"
+        settings["Solver"] = {"Order": 2}
+        settings["Boundaries"] = {
+            "SurfaceCurrent": [{"Index": i, "Attributes": [i], "Direction": "+X"} for i in (1, 2, 3)],
+            "Postprocessing": {"SurfaceFlux": [{"Index": 1, "Attributes": [4], "Type": "Magnetic"}]},
+        }
+        atomic_json(self.config, settings)
+        value = field_slurm.plan(self.config, self.profile, required_outputs={"surface-F.csv": 1})
+        self.assertEqual(value["required_outputs"], {"surface-F.csv": 3, "terminal-I.csv": 3})
+        del settings["Boundaries"]["Postprocessing"]
+        atomic_json(self.config, settings)
+        with self.assertRaisesRegex(ValueError, "require surface-current sources and flux pickups"):
+            field_slurm.plan(self.config, self.profile)
 
     def test_electrostatic_job_collects_declared_terminal_matrix(self):
         settings = read_json(self.config)
@@ -191,6 +213,32 @@ class FieldSlurmTests(unittest.TestCase):
         result = self.run_path / "raw" / "eig.csv"
         result.write_bytes(result.read_bytes().replace(b"7.2", b"7.3"))
         self.assertEqual(field_slurm.collect(self.run_path)["status"], "CORRUPT")
+
+    def test_geometric_bisection_uses_captured_palace_output_and_rejects_log_edits(self):
+        from emulateqpu.fullwave import reduction
+
+        self.run_path = self.root / "eigenmode-slurm"
+        self.stage()
+        receipt = self.solve(cells=110,
+                             stdout=b"Added 10 elements in 2 iterations of local bisection for under-resolved interior boundaries\n")
+        log = self.run_path / field_slurm.PALACE_LOG_DIRECTORY / "stdout.log"
+        self.assertEqual(receipt["logs_sha256"]["stdout.log"], file_hash(log))
+        hashes = {"eigenmode.json": file_hash(self.config), "mesh.msh": file_hash(self.mesh)}
+        bare_die = {"tetrahedra": 100, "files_sha256": hashes}
+        assembly = {"tetrahedra": 100, "files_sha256": {**hashes, "chip-layout.json": "", "carrier-layout.json": ""}}
+        for manifest in (bare_die, assembly):
+            self.assertEqual(reduction._stage_output(self.root, manifest, "eigenmode"), self.run_path / "raw")
+        log.write_bytes(b"Changed output\n")
+        observed = field_slurm.collect(self.run_path)
+        self.assertEqual(observed["status"], "CORRUPT")
+        self.assertIn("Captured Palace logs changed", observed["error"])
+
+        legacy = {key: value for key, value in receipt.items() if key != "logs_sha256"}
+        atomic_json(self.run_path / "execution.json", legacy)
+        self.assertTrue(field_slurm.collect(self.run_path)["complete"])
+        for manifest in (bare_die, assembly):
+            with self.assertRaisesRegex(ValueError, "solved mesh cell count differs"):
+                reduction._stage_output(self.root, manifest, "eigenmode")
 
     def test_duplicate_submission_and_changed_input_rejected(self):
         self.stage()

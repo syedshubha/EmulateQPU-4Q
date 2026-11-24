@@ -18,6 +18,13 @@ constexpr double mm_to_m=1e-3;
 const double eps0=palace::electromagnetics::epsilon0_;
 const double mu0=palace::electromagnetics::mu0_;
 struct Fields { std::unique_ptr<GridFunction> er,ei,br,bi; };
+Mesh load_saved_mesh(const std::string &fields) {
+  const auto path = fields + "/mesh.000000";
+  std::ifstream stream(path);
+  if (!stream) throw std::runtime_error("Missing saved MFEM mesh: " + path);
+  // Refinement preparation or orientation repair can reorder the saved field DOFs.
+  return Mesh(stream, /*generate_edges=*/1, /*refine=*/0, /*fix_orientation=*/false);
+}
 std::unique_ptr<GridFunction> load(Mesh &m,const std::string &p) {
   std::ifstream s(p);if(!s)throw std::runtime_error("Missingfield:"+p);
   return std::make_unique<GridFunction>(&m,s);
@@ -101,7 +108,7 @@ json benchmark() {
 // This does not substitute scalar energy histograms for vector inner products.
 int samples(int argc,char **argv) {
   if(argc!=6)throw std::runtime_error("Usage --sample fields_dir points_csv output_csv mode");
-  std::string fields=argv[2];int mode=std::stoi(argv[5]);std::ifstream ms(fields+"/mesh.000000");Mesh mesh(ms,1,1,false);
+  std::string fields=argv[2];int mode=std::stoi(argv[5]);Mesh mesh=load_saved_mesh(fields);
   std::ostringstream index;index<<std::setw(6)<<std::setfill('0')<<mode;
   auto er=load(mesh,fields+"/E_real_"+index.str()+".gf.000000"),ei=load(mesh,fields+"/E_imag_"+index.str()+".gf.000000");
   std::ifstream input(argv[3]);if(!input)throw std::runtime_error("Missingphysicalpointlist");
@@ -125,7 +132,7 @@ int main(int argc,char **argv) {
     if(argc==2&&std::string(argv[1])=="--benchmark"){std::cout<<benchmark().dump(2)<<std::endl;return 0;}
     if(argc!=6)throw std::runtime_error("Usage fields_dir output_dir windows_json order mode");
     std::string fields=argv[1],out=argv[2];int order=std::stoi(argv[4]),mode=std::stoi(argv[5]);std::ifstream def(argv[3]);json windows;def>>windows;
-    std::ifstream stream(fields+"/mesh.000000");Mesh mesh(stream,1,1,false);std::ostringstream index;index<<std::setw(6)<<std::setfill('0')<<mode;
+    Mesh mesh=load_saved_mesh(fields);std::ostringstream index;index<<std::setw(6)<<std::setfill('0')<<mode;
     auto er=load(mesh,fields+"/E_real_"+index.str()+".gf.000000"),ei=load(mesh,fields+"/E_imag_"+index.str()+".gf.000000"),
          br=load(mesh,fields+"/B_real_"+index.str()+".gf.000000"),bi=load(mesh,fields+"/B_imag_"+index.str()+".gf.000000");
     auto result=integrate(mesh,*er,*ei,*br,*bi,order,windows,order==6?out+"/cells_mode"+std::to_string(mode)+".csv":"");

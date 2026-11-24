@@ -3,6 +3,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from copy import deepcopy
 from io import StringIO
 import json
+import os
 from pathlib import Path
 import subprocess
 import tempfile
@@ -259,14 +260,14 @@ class ExecutionTests(unittest.TestCase):
 class SlurmTests(unittest.TestCase):
     setUp = ExecutionTests.setUp
     _success = ExecutionTests._success
-    def _render(self, path="slurm run"):
+    def _render(self, path="slurm run", *, study=None, **site):
         profile = {"schema": hpc.PROFILE_SCHEMA, "shared_filesystem": True,
                    "shared_root": str(self.root), "memory_mb": 128, "wall_time": "00:01:00",
                    "array_concurrency": 2, "cpus_per_task": 1, "max_retries": 1,
-                   "partition": "short", "account": "project", "environment": {"CASE": "a b"}}
+                   "partition": "short", "account": "project", "environment": {"CASE": "a b"}, **site}
         with patch("emulateqpu.contracts.validate_request", side_effect=deepcopy), \
              patch.object(ex, "_plan_validated_request", side_effect=_fixture_plan):
-            metadata = hpc.render(self.study, profile, self.root / path)
+            metadata = hpc.render(self.study if study is None else study, profile, self.root / path)
         return self.root / path, metadata
 
     def test_rendering_is_literal_and_array_mapping_stable(self):
@@ -347,6 +348,207 @@ class SlurmTests(unittest.TestCase):
         self.assertTrue((root / "submission_0002.json").is_file())
         with self.assertRaisesRegex(ValueError, "allowance"):
             hpc.submit(root, retry=True, runner=retry)
+
+    def test_retry_requires_terminal_accounting_and_no_active_queue_entry(self):
+        root, _ = self._render()
+        hpc.submit(root, runner=lambda command, **kwargs: subprocess.CompletedProcess(command, 0, "1234\n", ""))
+        self._success(root, 0)
+        for queued, accounting, queue_error in [
+            ("1234_1|RESIZING\n", "1234_1|FAILED|1:0\n", False),
+            ("1234_[1]|PENDING\n", "1234_1|FAILED|1:0\n", False),
+            ("", "1234_1|PREEMPTED|0:0\n", False),
+            ("", "1234_1|FAILED|1:0\n", True),
+            ("", "1234_1|FAILED|\n", False),
+        ]:
+            with self.subTest(queued=queued, accounting=accounting, queue_error=queue_error):
+                def runner(command, **kwargs):
+                    self.assertNotEqual(command[0], "sbatch")
+                    if command[0] == "squeue":
+                        return subprocess.CompletedProcess(command, int(queue_error), queued, "queue error" if queue_error else "")
+                    return subprocess.CompletedProcess(command, 0, "1234_0|COMPLETED|0:0\n" + accounting, "")
+                with self.assertRaisesRegex(ValueError, "termination.*right"):
+                    hpc.submit(root, retry=True, runner=runner)
+                self.assertFalse((root / "submission_0002.json").exists())
+
+    def test_purged_queue_job_uses_unfiltered_queue_before_accounting(self):
+        root, _ = self._render()
+        hpc.submit(root, runner=lambda command, **kwargs: subprocess.CompletedProcess(command, 0, "1234\n", ""))
+        self._success(root, 0)
+        queued = "1234_1|RUNNING\n"
+        calls = []
+        def runner(command, **kwargs):
+            calls.append(command)
+            if command[0] == "squeue" and "--jobs=1234" in command:
+                return subprocess.CompletedProcess(command, 1, "", "slurm_load_jobs error: Invalid job id specified\n")
+            output = {"squeue": queued, "sacct": "1234_1|FAILED|1:0\n", "sbatch": "1235\n"}[command[0]]
+            return subprocess.CompletedProcess(command, 0, output, "")
+        with self.assertRaisesRegex(ValueError, "termination"):
+            hpc.submit(root, retry=True, runner=runner)
+        self.assertEqual([command[0] for command in calls], ["squeue", "squeue", "sacct"])
+        self.assertIn("--array", calls[1])
+        self.assertNotIn("--jobs=1234", calls[1])
+        queued = "5678_1|RUNNING\n"
+        receipt = hpc.submit(root, retry=True, runner=runner)
+        self.assertEqual(receipt["task_indices"], [1])
+
+    def test_terminal_task_with_preserved_dispatch_lock_does_not_consume_retry(self):
+        root, _ = self._render()
+        hpc.submit(root, runner=lambda command, **kwargs: subprocess.CompletedProcess(command, 0, "1234\n", ""))
+        self._success(root, 0)
+        lock = root / "tasks/right/dispatch.lock"
+        lock.write_text("preserved controller")
+        def runner(command, **kwargs):
+            self.assertNotEqual(command[0], "sbatch")
+            output = "1234_1|TIMEOUT|0:15\n" if command[0] == "sacct" else ""
+            return subprocess.CompletedProcess(command, 0, output, "")
+        state = hpc.status(root, runner=runner)["tasks"][1]
+        self.assertTrue(state["scheduler_terminal_confirmed"])
+        self.assertTrue(state["dispatch_lock_present"])
+        with self.assertRaisesRegex(ValueError, "Dispatch lock remains for right"):
+            hpc.submit(root, retry=True, runner=runner)
+        self.assertEqual(lock.read_text(), "preserved controller")
+        self.assertFalse((root / "submission_0002.json").exists())
+
+    def test_dispatch_lock_records_slurm_owner_before_worker_launch(self):
+        root, metadata = self._render(max_array_size=1)
+        owner = {"job_id": "19", "array_job_id": "17", "array_task_id": 0, "cluster": "example"}
+        environment = {"SLURM_JOB_ID": "19", "SLURM_ARRAY_JOB_ID": "17",
+                       "SLURM_ARRAY_TASK_ID": "0", "SLURM_CLUSTER_NAME": "example"}
+        lock = root / "tasks/right/dispatch.lock"
+        def stop_after_lock(*args, **kwargs):
+            stored = ex._read(lock)
+            self.assertEqual(stored["slurm"], owner)
+            self.assertEqual(stored["request_sha256"], metadata["task_map"][1]["request_sha256"])
+            raise OSError("fixture stops before worker launch")
+        with patch.dict(os.environ, environment), patch.object(ex.subprocess, "Popen", side_effect=stop_after_lock):
+            with self.assertRaisesRegex(OSError, "fixture stops"):
+                ex.execute_task(root, 1)
+        self.assertFalse(lock.exists())
+
+    def test_terminal_owned_lock_is_archived_for_exact_array_element(self):
+        root, metadata = self._render(max_array_size=1)
+        ids = iter((17, 18, 20))
+        def runner(command, **kwargs):
+            if command[0] == "sacct":
+                output = "18_0|CANCELLED by 1000|0:9|example|19\n"
+            elif command[0] == "squeue":
+                output = ""
+            else:
+                job = next(ids)
+                if job == 20:
+                    self.assertFalse(lock.exists())
+                    self.assertEqual(archive.read_bytes(), payload)
+                output = f"{job};example\n"
+            return subprocess.CompletedProcess(command, 0, output, "")
+        hpc.submit(root, runner=runner)
+        self._success(root, 0)
+        lock = root / "tasks/right/dispatch.lock"
+        archive = root / "tasks/right/dispatch-lock-example-19.json"
+        owner = {"job_id": "19", "array_job_id": "18", "array_task_id": 0, "cluster": "example"}
+        lock_record = {"task_id": "right", "request_sha256": metadata["task_map"][1]["request_sha256"], "slurm": owner}
+        for key, wrong in (("job_id", "18"), ("array_job_id", "17"), ("array_task_id", 1), ("cluster", "other")):
+            with self.subTest(wrong_owner=key):
+                ex.atomic_json(lock, {**lock_record, "slurm": {**owner, key: wrong}})
+                with self.assertRaisesRegex(ValueError, "Dispatch lock remains for right"):
+                    hpc.submit(root, retry=True, runner=runner)
+                self.assertFalse(archive.exists())
+                self.assertFalse((root / "submission_0003.json").exists())
+        ex.atomic_json(lock, lock_record)
+        payload = lock.read_bytes()
+        receipt = hpc.submit(root, retry=True, runner=runner)
+        self.assertEqual(receipt["task_indices"], [1])
+        self.assertIn("--array=0%2", receipt["command"])
+
+    def test_sharded_arrays_keep_global_identities_and_retry_only_missing_indices(self):
+        study = {**self.study, "tasks": [{"id": f"task-{i}", "request": self.request} for i in range(5)]}
+        root, metadata = self._render(study=study, max_array_size=2, dependency="afterok:77")
+        self.assertEqual([(shard["start"], shard["stop"]) for shard in metadata["shards"]], [(0, 2), (2, 4), (4, 5)])
+        self.assertEqual([entry["id"] for entry in metadata["task_map"]], [f"task-{i}" for i in range(5)])
+        self.assertIn('"$((SLURM_ARRAY_TASK_ID + 2))"', (root / "job-0002.sbatch").read_text())
+        ids = iter((100, 101, 102, 103, 104))
+        calls = []
+        def runner(command, **kwargs):
+            calls.append(command)
+            if command[0] == "sbatch":
+                output = f"{next(ids)};cluster-a\n"
+            elif command[0] == "squeue":
+                output = ""
+            else:
+                job = next(argument.split("=")[1] for argument in command if argument.startswith("--jobs="))
+                output = f"{job}_0|COMPLETED|0:0\n{job}_1|TIMEOUT|0:15\n"
+            return subprocess.CompletedProcess(command, 0, output, "")
+        initial = hpc.submit(root, runner=runner)["submissions"]
+        self.assertEqual([receipt["task_indices"] for receipt in initial], [[0, 1], [2, 3], [4]])
+        self.assertIn("--array=0-0%2", calls[2])
+        self.assertIn("--dependency=afterany:100,afterok:77", calls[1])
+        self.assertIn("--dependency=afterany:101,afterok:77", calls[2])
+        self.assertIn("--clusters=cluster-a", calls[2])
+        for i in (0, 2, 4):
+            self._success(root, i)
+        retried = hpc.submit(root, retry=True, runner=runner)["submissions"]
+        self.assertEqual([receipt["task_indices"] for receipt in retried], [[1], [3]])
+        self.assertTrue(all("--array=1%2" in receipt["command"] for receipt in retried))
+        final = hpc.status(root, runner=runner)
+        self.assertEqual([row["scheduler_job_id"] for row in final["tasks"]], ["100", "103", "101", "104", "102"])
+        self.assertEqual([row["result_status"] for row in final["tasks"]], ["COMPLETE", "MISSING", "COMPLETE", "MISSING", "COMPLETE"])
+
+    @unittest.skipUnless(os.name == "posix", "Slurm scripts require Bash")
+    def test_second_shard_passes_its_global_index_to_the_worker(self):
+        shell_probe = self.root / "python probe"
+        shell_probe.write_text('#!/bin/bash\nprintf "%s\\n" "$@"\n', encoding="utf-8")
+        shell_probe.chmod(0o700)
+        root, _ = self._render(max_array_size=1, python=str(shell_probe))
+        run = subprocess.run(["bash", str(root / "job-0002.sbatch")], env={**os.environ, "SLURM_ARRAY_TASK_ID": "0"},
+                             capture_output=True, text=True, check=True)
+        self.assertEqual(run.stdout.splitlines(), ["-m", "emulateqpu.execution", "--run-task", str(root.resolve()), "1"])
+
+    def test_unknown_shard_submission_is_recorded_and_blocks_repeat_dispatch(self):
+        root, _ = self._render(max_array_size=1)
+        def runner(command, **kwargs):
+            if command[-1].endswith("job.sbatch"):
+                return subprocess.CompletedProcess(command, 0, "1234\n", "")
+            raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+        with self.assertRaisesRegex(RuntimeError, "shard 2"):
+            hpc.submit(root, runner=runner)
+        self.assertEqual(ex._read(root / "submission_0001.json")["job_id"], "1234")
+        self.assertEqual(ex._read(root / "submission_0002.json")["status"], "SUBMISSION_ID_UNKNOWN")
+        with patch("subprocess.run") as scheduler:
+            with self.assertRaisesRegex(ValueError, "no confirmed job identity"):
+                hpc.submit(root, retry=True)
+            scheduler.assert_not_called()
+
+    def test_legacy_array_and_receipts_keep_stable_retry_mapping(self):
+        root, metadata = self._render()
+        metadata.pop("shards")
+        ex.atomic_json(root / "slurm.json", metadata)
+        def runner(command, **kwargs):
+            if command[0] == "sacct":
+                first_job = "--jobs=41" in command
+                output = "41_0|COMPLETED|0:0\n41_1|FAILED|1:0\n" if first_job else "42_1|COMPLETED|0:0\n"
+            elif command[0] == "squeue":
+                output = ""
+            else:
+                output = "42\n" if "--array=1%2" in command else "41\n"
+            return subprocess.CompletedProcess(command, 0, output, "")
+        for attempt in (1, 2):
+            if attempt == 2:
+                self._success(root, 0)
+            receipt = hpc.submit(root, runner=runner, retry=(attempt == 2))
+            receipt.pop("shard")
+            receipt.pop("task_indices")
+            if attempt == 1:
+                receipt["command"] = [arg for arg in receipt["command"] if not arg.startswith("--array=")]
+            ex.atomic_json(root / f"submission_{attempt:04d}.json", receipt)
+        state = hpc.status(root, runner=runner)
+        self.assertEqual([row["scheduler_job_id"] for row in state["tasks"]], ["41", "42"])
+
+    def test_array_limit_and_scheduler_environment_are_validated(self):
+        profile = {"shared_filesystem": True}
+        self.assertEqual(hpc.validate_profile(profile)["max_array_size"], 1001)
+        with self.assertRaisesRegex(ValueError, "max_array_size"):
+            hpc.validate_profile({**profile, "max_array_size": 0})
+        with self.assertRaisesRegex(ValueError, "override Slurm"):
+            hpc.validate_profile({**profile, "environment": {"SLURM_ARRAY_TASK_ID": "0"}})
 
     def test_changed_script_and_directive_injection_rejected(self):
         root, _ = self._render()

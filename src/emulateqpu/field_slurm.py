@@ -22,11 +22,14 @@ EXECUTION_SCHEMA = "emulateqpu.field_slurm_execution.v1"
 SUBMISSION_SCHEMA = "emulateqpu.field_slurm_submission.v1"
 COLLECTION_SCHEMA = "emulateqpu.field_slurm_collection.v1"
 STATUS_SCHEMA = "emulateqpu.field_slurm_status.v1"
+PALACE_LOG_DIRECTORY = "palace-logs"
+PALACE_LOG_NAMES = ("stdout.log", "stderr.log")
 
 SITE_KEYS = {"shared_filesystem", "shared_root", "python", "partition", "account", "qos",
              "job_name", "wall_time", "memory_mb", "environment"}
 FIELD_KEYS = {"schema", "palace_binary", "build_manifest", "nodes", "mpi_ranks", "mpi_type"}
-OUTPUTS = {"Electrostatic": "terminal-C.csv", "Eigenmode": "eig.csv", "Driven": "port-S.csv"}
+OUTPUTS = {"Electrostatic": "terminal-C.csv", "Eigenmode": "eig.csv", "Driven": "port-S.csv",
+           "Magnetostatic": "surface-F.csv"}
 
 
 def _read(value):
@@ -116,7 +119,17 @@ def _tables(config, required_outputs):
         if not isinstance(terminals, list) or not terminals:
             raise ValueError("Palace electrostatic jobs require at least one declared terminal")
         lower_bound = len(terminals)
+    elif kind == "Magnetostatic":
+        boundaries = config.get("Boundaries", {})
+        sources = boundaries.get("SurfaceCurrent") if isinstance(boundaries, dict) else None
+        postprocessing = boundaries.get("Postprocessing", {}) if isinstance(boundaries, dict) else None
+        pickups = postprocessing.get("SurfaceFlux") if isinstance(postprocessing, dict) else None
+        if not isinstance(sources, list) or not sources or not isinstance(pickups, list) or not pickups:
+            raise ValueError("Magnetostatic field jobs require surface-current sources and flux pickups")
+        lower_bound = len(sources)
     tables = {OUTPUTS[kind]: lower_bound}
+    if kind == "Magnetostatic":
+        tables["terminal-I.csv"] = lower_bound
     for name, count in (required_outputs or {}).items():
         if not re.fullmatch(r"[A-Za-z0-9_.-]+\.csv", name) or type(count) is not int or count < 1:
             raise ValueError("Expected output tables must identify CSV names and positive minimum row counts")
@@ -135,7 +148,7 @@ def plan(config, profile, *, inputs=(), required_outputs=None):
         raise ValueError("Palace settings require Problem, Model, and Solver objects")
     kind = settings["Problem"].get("Type")
     if not isinstance(kind, str) or kind not in OUTPUTS:
-        raise ValueError("Supported field jobs use Palace Electrostatic, Eigenmode, or Driven configurations")
+        raise ValueError("Supported Palace field problem types: " + ", ".join(OUTPUTS))
     if settings.get("Solver", {}).get("Device", "CPU") != "CPU":
         raise ValueError("This field Slurm workflow requires a CPU Palace configuration")
     mesh_setting = settings.get("Model", {}).get("Mesh")
@@ -305,6 +318,13 @@ def _outputs(raw, required, mpi_ranks):
     return {"actual_mpi_ranks": actual, "files": _file_manifest(raw)}
 
 
+def _palace_log_hashes(directory):
+    paths = [directory / name for name in PALACE_LOG_NAMES]
+    if directory.is_symlink() or any(path.is_symlink() or not path.is_file() for path in paths):
+        raise ValueError("Missing or unsafe captured Palace log")
+    return {path.name: file_hash(path) for path in paths}
+
+
 def _execute(root, *, runner=None, environment=None):
     root, record, value = _run(root)
     _verify_inputs(value)
@@ -325,8 +345,12 @@ def _execute(root, *, runner=None, environment=None):
     started = time.monotonic()
     worker_env = {**environment, **profile.get("environment", {}), **dict.fromkeys(THREAD_VARIABLES, "1")}
     try:
-        response = (runner or subprocess.run)(record["command"], cwd=Path(value["config"]["path"]).parent,
-                                               env=worker_env, check=False)
+        logs = root / PALACE_LOG_DIRECTORY
+        logs.mkdir()
+        with (logs / PALACE_LOG_NAMES[0]).open("xb") as stdout, (logs / PALACE_LOG_NAMES[1]).open("xb") as stderr:
+            response = (runner or subprocess.run)(record["command"], cwd=Path(value["config"]["path"]).parent,
+                                                   env=worker_env, check=False, stdout=stdout, stderr=stderr)
+        result["logs_sha256"] = _palace_log_hashes(logs)
         result["returncode"] = response.returncode
         if response.returncode == 0:
             result.update(_outputs(root / "raw", value["required_outputs"], profile["mpi_ranks"]), status="COMPLETE")
@@ -356,6 +380,9 @@ def collect(root):
             outputs = _outputs(root / "raw", value["required_outputs"], value["profile"]["mpi_ranks"])
             if execution["returncode"] != 0 or any(execution[key] != observed for key, observed in outputs.items()):
                 raise ValueError("Field output contents changed after execution")
+            if ("logs_sha256" in execution
+                    and execution["logs_sha256"] != _palace_log_hashes(root / PALACE_LOG_DIRECTORY)):
+                raise ValueError("Captured Palace logs changed after execution")
             result.update(status="COMPLETE", complete=True)
     except (OSError, ValueError, KeyError, csv.Error) as error:
         result.update(status="CORRUPT", error=str(error))

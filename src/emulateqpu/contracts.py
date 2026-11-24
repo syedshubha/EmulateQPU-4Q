@@ -267,6 +267,7 @@ def example_request(name='small-pulse'):
     from emulateqpu._engine.fixtures import demo_cell, demo_schedule
     c=demo_cell(); dims=[3,3,3]; cap=None; enc=['00','01','10','11']; kind='dressed'; initial=['00']
     s=demo_schedule()
+    measured_qubits = ['q0', 'q1', 'q2', 'q3'] if name == 'four-qubit' else ['q0']
     if name in ('four-qubit', 'six-data'):
         from .chain import linear_chain_cell
         n_data = 4 if name == 'four-qubit' else 6
@@ -284,7 +285,7 @@ def example_request(name='small-pulse'):
        'model':{'dimensions':dims,'excitation_cap':cap,'cap_exempt':[],
                 'encoding':{'kind':kind,'labels':enc},'basis_order':BASIS_ORDER},
        'initial':{'kind':'encoding','labels':initial},'schedule':s,
-       'measurement':{'qubits':['q0'],'instrument':{'model':'ideal_projective','basis':'local_levels'},'duration_ns':0.},
+       'measurement':{'qubits':measured_qubits,'instrument':{'model':'ideal_projective','basis':'local_levels'},'duration_ns':0.},
        'noise':None,'solver':{'rtol':1e-10,'atol':1e-12,'samples':3},
        'resources':{'memory_mb':512,'wall_time_s':120,'numerical_threads':1,'max_branches':64,'max_output_mb':64},
        'observables':['populations','measurement','states'],'metrics':None,'calibration':None,'seed':1729,

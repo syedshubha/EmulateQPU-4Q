@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+import math
 import subprocess
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -11,7 +12,11 @@ from scipy.optimize import linear_sum_assignment
 
 from ..chain import linear_chain_cell
 from ..io import atomic_json, digest, file_hash, read_json
-from .design import DESIGN_SCHEMA, MODE_ORDER, PALACE_COMMIT, PALACE_TAG, PORT_ORDER
+from .assembly import FLUX_TABLES, magnetostatic_config
+from .design import (ASSEMBLY_DESIGN_SCHEMA, ASSEMBLY_PORT_ORDER, DATA_QUBITS, DESIGN_ID, DESIGN_SCHEMA,
+                     LEGACY_DESIGN_ID, LEGACY_DESIGN_SCHEMA, LEGACY_PORT_ORDER, MODE_ORDER,
+                     PALACE_COMMIT, PALACE_TAG, PORT_ORDER,
+                     SHARED_DESIGN_ID, SHARED_PORT_ORDER)
 
 QUALIFICATION_SCHEMA = "emulateqpu.fullwave.qualification.v1"
 MODEL_SCHEMA = "emulateqpu.fullwave.model.v1"
@@ -19,11 +24,17 @@ OVERLAP_SCHEMA = "emulateqpu.fullwave.mode-overlap.v1"
 LOCAL_RUN_SCHEMA = "emulateqpu.fullwave.local-execution.v1"
 STAGE_TABLES = {"electrostatic": ("terminal-C.csv",),
                 "eigenmode": ("eig.csv", "port-EPR.csv", "port-Q.csv", "domain-E.csv"),
-                "driven-train": ("port-S.csv",), "driven-holdout": ("port-S.csv",)}
+                "driven-train": ("port-S.csv",), "driven-holdout": ("port-S.csv",),
+                "magnetostatic": FLUX_TABLES}
 TOLERANCE = {"eigen_backward_error": 1e-7, "mesh_frequency_relative": 1e-3,
              "mesh_mode_overlap_min": .90, "energy_relative": .01,
              "junction_energy_fraction_abs": .01, "loss_power_relative": .01, "scattering_passivity_abs": .01,
              "scattering_reciprocity_abs": .01, "heldout_complex_rms": .01}
+READOUT_HOLDOUT_METRIC = "readout_through_heldout_complex_rms_max"
+ASSEMBLY_LAYOUTS = {"chip-layout.json": "chip_design_sha256", "carrier-layout.json": "carrier_design_sha256"}
+ASSEMBLY_DESIGNS = {f"four-data-line-{name}-assembly-v1": name for name in ("dedicated", "shared")}
+ASSEMBLY_BRANCH_MODES = tuple(mode for mode in MODE_ORDER for _ in range(1 if mode in DATA_QUBITS else 2))
+ASSEMBLY_SHARED_PAIR = ("readout_q0_in", "readout_q3_out")
 
 
 def _table(path):
@@ -68,32 +79,125 @@ def _same_indices(table, name, expected):
         raise ValueError(f"Palace rows in {name} differ from the eigenmode inventory")
 
 
+def _junction_groups(design):
+    modes = [row.get("mode", row["label"]) for row in design["junctions"]]
+    return [[index for index, name in enumerate(modes) if name == mode] for mode in MODE_ORDER]
+
+
+def _assembly_inventory(design, shared):
+    branches = design["junctions"]
+    labels = [branch["label"] for branch in branches]
+    if (tuple(branch["mode"] for branch in branches) != ASSEMBLY_BRANCH_MODES
+            or [branch["port"] for branch in branches] != list(range(101, 111))
+            or len(set(labels)) != len(labels)
+            or len(design["island_order"]) != 14 or len(set(design["island_order"])) != 14):
+        raise ValueError("Assembly requires fourteen islands and ten ordered junction/SQUID branches")
+    for branch in branches:
+        numbers = [branch[key] for key in ("EJ_GHz", "inductance_H", "capacitance_F", "bias_Phi0")]
+        if (any(type(value) not in (int, float) or not math.isfinite(value) for value in numbers)
+                or min(numbers[:3]) <= 0 or not 0 <= numbers[-1] < .45):
+            raise ValueError(f"Invalid assembled branch parameters for {branch['label']}")
+    for group in _junction_groups(design):
+        if len({branches[index]["bias_Phi0"] for index in group}) != 1:
+            raise ValueError("SQUID branches require one common mode-level idle flux")
+    active = set(ASSEMBLY_PORT_ORDER)
+    if shared:
+        active.difference_update(set(PORT_ORDER[4:]) - set(ASSEMBLY_SHARED_PAIR))
+    if any(port.get("active") is not (port["label"] in active) for port in design["ports"]):
+        raise ValueError("Assembly port activity differs from the die wire-bond topology")
+
+
 def _case(directory, revision):
     directory = Path(directory).resolve()
     manifest = read_json(directory / "field-inputs.json")
     design = read_json(directory / "design.json")
+    identity = (design.get("schema"), design.get("design_id"))
+    assembly = identity[0] == ASSEMBLY_DESIGN_SCHEMA
+    topology = ASSEMBLY_DESIGNS.get(identity[1]) if assembly else None
+    shared = topology == "shared" if assembly else identity[1] == SHARED_DESIGN_ID
+    port_order = {(DESIGN_SCHEMA, DESIGN_ID): PORT_ORDER,
+                  (DESIGN_SCHEMA, SHARED_DESIGN_ID): SHARED_PORT_ORDER,
+                  (LEGACY_DESIGN_SCHEMA, LEGACY_DESIGN_ID): LEGACY_PORT_ORDER}.get(identity)
+    if assembly and topology is not None and design.get("readout_topology") == topology:
+        port_order = ASSEMBLY_PORT_ORDER
     if (manifest.get("schema") != "emulateqpu.fullwave.inputs.v1" or manifest.get("refinement") != revision
             or manifest.get("palace") != {"tag": PALACE_TAG, "commit": PALACE_COMMIT}
             or manifest.get("design_sha256") != digest(design)
-            or design.get("schema") != DESIGN_SCHEMA or design.get("mode_order") != list(MODE_ORDER)
-            or [port["label"] for port in design["ports"]] != list(PORT_ORDER)
-            or [port["label"] for port in design["junctions"]] != list(MODE_ORDER)):
+            or port_order is None or design.get("mode_order") != list(MODE_ORDER)
+            or [(port["label"], port["port"]) for port in design["ports"]]
+               != [(label, number) for number, label in enumerate(port_order, 1)]):
         raise ValueError("Four-data Palace input identity or ordering differs")
-    expected = ("design.json", "mesh.msh", "electrostatic.json", "eigenmode.json", "driven-train.json", "driven-holdout.json")
-    if set(manifest["files_sha256"]) != set(expected):
+    if assembly:
+        _assembly_inventory(design, shared)
+    elif [port["label"] for port in design["junctions"]] != list(MODE_ORDER):
+        raise ValueError("Four-data Palace junction ordering differs")
+    if design["schema"] in (DESIGN_SCHEMA, ASSEMBLY_DESIGN_SCHEMA):
+        channels = design["readout_channels"]
+        if shared:
+            pair = ASSEMBLY_SHARED_PAIR if assembly else ("readout_in", "readout_out")
+            expected_channels = [(qubit, *pair) for qubit in DATA_QUBITS]
+        else:
+            expected_channels = [(qubit, f"readout_{qubit}_in", f"readout_{qubit}_out") for qubit in DATA_QUBITS]
+        if [(row["qubit"], row["input_port"], row["output_port"]) for row in channels] != expected_channels:
+            raise ValueError("Readout channel order or port mapping differs")
+        resonators = {row["resonator"] for row in channels}
+        feedlines = {row["feedline"] for row in channels}
+        if (len(resonators) != len(channels) or resonators & feedlines
+                or not (resonators | feedlines).issubset(design["conductors"])):
+            raise ValueError("Readout channels require distinct resonator conductors in the design")
+        if (shared and feedlines != {"readout_feedline"}) or (not shared and len(feedlines) != len(channels)):
+            raise ValueError("Readout feedline mapping differs")
+        if shared and [row["resonator"] for row in channels] != [f"readout_{qubit}_resonator" for qubit in DATA_QUBITS]:
+            raise ValueError("Shared readout resonator mapping differs")
+    expected = {"design.json", "mesh.msh", "electrostatic.json", "eigenmode.json", "driven-train.json", "driven-holdout.json"}
+    if assembly:
+        expected.update(ASSEMBLY_LAYOUTS)
+    if "flux_transfer" in design:
+        if not assembly:
+            raise ValueError("Flux transfer requires an assembled die and carrier")
+        expected.add("magnetostatic.json")
+    if set(manifest["files_sha256"]) != expected:
         raise ValueError("Incomplete frozen Palace input inventory")
     for file, expected_hash in manifest["files_sha256"].items():
         path = directory / file
         if path.is_symlink() or file_hash(path) != expected_hash:
             raise ValueError(f"Palace input integrity mismatch for {file}")
+    if assembly and any(digest(read_json(directory / file)) != design.get(key)
+                        for file, key in ASSEMBLY_LAYOUTS.items()):
+        raise ValueError("Package assembly source layout hashes differ")
+    if "flux_transfer" in design:
+        _verify_flux_configuration(directory, design, manifest)
     return directory, manifest, design
+
+
+def _verify_flux_configuration(directory, design, manifest):
+    transfer = design["flux_transfer"]
+    expected_sources = [
+        {"label": row["label"], "index": i, "elements": row["elements"]}
+        for i, row in enumerate((row for row in design["ports"] if row["kind"] == "flux"), 1)
+    ]
+    couplers = [mode for mode in MODE_ORDER if mode not in DATA_QUBITS]
+    pickups = [(row["label"], row["surface"], row["index"], row["direction"])
+               for row in transfer["pickups"]]
+    if (transfer["sources"] != expected_sources
+            or [row["label"] for row in expected_sources] != [f"flux_{mode}" for mode in couplers]
+            or pickups != [(mode, f"flux_pickup_{mode}", i, "+Z") for i, mode in enumerate(couplers, 1)]
+            or any(surface in design["conductors"] or surface not in design["sheets_wkt"]
+                   for _, surface, _, _ in pickups)
+            or manifest.get("expected_outputs", {}).get("magnetostatic") != list(FLUX_TABLES)):
+        raise ValueError("Flux source or passive pickup inventory differs")
+    expected = magnetostatic_config(design, manifest["physical_surface_ids"], read_json(directory / "electrostatic.json"))
+    if read_json(directory / "magnetostatic.json") != expected:
+        raise ValueError("Frozen magnetostatic inputs differ from the flux transfer geometry")
 
 
 def _stage_output(case, manifest, stage, *, synthetic=False):
     native = case / f"{stage}-output"
     batch = case / f"{stage}-slurm"
+    expected_cells = manifest["tetrahedra"]
+    assembly = set(ASSEMBLY_LAYOUTS) <= manifest["files_sha256"].keys()
     if batch.exists():
-        from ..field_slurm import collect
+        from ..field_slurm import PALACE_LOG_DIRECTORY, collect
 
         if native.exists():
             raise ValueError(f"Both local and Slurm outputs exist for {stage}")
@@ -105,27 +209,62 @@ def _stage_output(case, manifest, stage, *, synthetic=False):
                            for entry in plan["inputs"])):
             raise ValueError(f"Incomplete or mismatched Slurm outputs for {stage}")
         stages = Path(result["raw_directory"])
+        if stage == "magnetostatic":
+            _field_provenance(stages, FLUX_TABLES, solved_mesh=False, synthetic=False)
+            if "logs_sha256" not in result["execution"]:
+                raise ValueError("Magnetostatic Slurm outputs require captured Palace logs")
+        if "logs_sha256" in result["execution"]:
+            preprocessing = _mesh_preprocessing(stages, expected_cells, logs_directory=batch / PALACE_LOG_DIRECTORY)
+            if preprocessing["log_sha256"] != result["execution"]["logs_sha256"]:
+                raise ValueError(f"Palace mesh preprocessing logs differ for {stage}")
+            expected_cells += preprocessing["added_tetrahedra"]
     else:
         stages = native
         if not synthetic:
             receipt = read_json(stages / "fullwave-execution.json")
             hashes = manifest["files_sha256"]
-            evidence = _field_provenance(stages, STAGE_TABLES[stage], solved_mesh=stage == "eigenmode", synthetic=False)
+            execution_path = stages / "execution.json"
+            execution = read_json(execution_path)
+            evidence = _field_provenance(stages, STAGE_TABLES[stage], solved_mesh=stage == "eigenmode",
+                                         synthetic=False, expected_mpi_ranks=execution.get("plan", {}).get("mpi_ranks"))
             if (receipt.get("schema") != LOCAL_RUN_SCHEMA or receipt.get("stage") != stage
                     or receipt.get("config_sha256") != hashes[f"{stage}.json"]
                     or receipt.get("mesh_sha256") != hashes["mesh.msh"]
-                    or receipt.get("execution_sha256") != file_hash(stages / "execution.json")
+                    or receipt.get("execution_sha256") != file_hash(execution_path)
                     or receipt.get("field_sha256") != evidence
-                    or read_json(stages / "execution.json").get("status") != "COMPLETE"):
+                    or execution.get("status") != "COMPLETE"):
                 raise ValueError(f"Local output is stale, incomplete or lacks a bound launch for {stage}")
+            if assembly or "mesh_preprocessing" in receipt:
+                preprocessing = _mesh_preprocessing(stages, expected_cells)
+                if receipt.get("mesh_preprocessing") != preprocessing:
+                    raise ValueError(f"Palace mesh preprocessing logs differ for {stage}")
+                expected_cells += preprocessing["added_tetrahedra"]
     version = read_json(stages / "palace.json")
-    if version.get("Problem", {}).get("MeshElements") != manifest["tetrahedra"]:
+    if not synthetic and version.get("ElapsedTime", {}).get("Counts", {}).get("Adaptation") != 0:
+        raise ValueError(f"Palace output lacks a zero solution-adaptivity count for {stage}")
+    if version.get("Problem", {}).get("MeshElements") != expected_cells:
         raise ValueError(f"Palace solved mesh cell count differs from the input manifest for {stage}")
     return stages
 
 
-def solve_local(case, stage, *, executable, memory_mb=4096, wall_time_s=600):
-    """Run a single-rank Palace stage from frozen inputs and register its output evidence."""
+def _mesh_preprocessing(directory, input_cells, *, logs_directory=None):
+    """Bind recorded geometric crack repair to the native mesh count."""
+    from ..field_slurm import _palace_log_hashes
+    from .mesh_study import _native_preprocessing
+
+    logs_directory = directory if logs_directory is None else logs_directory
+    log_hashes = _palace_log_hashes(logs_directory)
+    preprocessing = _native_preprocessing(logs_directory)
+    native = read_json(directory / "palace.json")
+    if (native.get("ElapsedTime", {}).get("Counts", {}).get("Adaptation") != 0
+            or native["Problem"]["MeshElements"] != input_cells + preprocessing["added_tetrahedra"]):
+        raise ValueError("Palace mesh differs from its input and verified geometric preprocessing")
+    return {**preprocessing, "log_sha256": log_hashes}
+
+
+def solve_local(case, stage, *, executable, mpi_ranks=1, launcher=None, build_manifest=None,
+                memory_mb=4096, wall_time_s=600):
+    """Run a local Palace stage from frozen inputs and register its output evidence."""
     from ..palace import launch_palace, plan_palace
 
     if stage not in STAGE_TABLES:
@@ -134,10 +273,13 @@ def solve_local(case, stage, *, executable, memory_mb=4096, wall_time_s=600):
     case, manifest, _ = _case(case, revision)
     hashes = manifest["files_sha256"]
     config = case / f"{stage}.json"
+    if config.name not in hashes:
+        raise ValueError(f"Stage {stage} is absent from the frozen case")
     output = case / f"{stage}-output"
     if (case / f"{stage}-slurm").exists():
         raise ValueError(f"A Slurm run already exists for {stage}; use a fresh case")
-    plan = plan_palace(config, executable=executable, memory_mb=memory_mb, wall_time_s=wall_time_s)
+    plan = plan_palace(config, executable=executable, mpi_ranks=mpi_ranks, launcher=launcher,
+                       build_manifest=build_manifest, memory_mb=memory_mb, wall_time_s=wall_time_s)
     if plan["config_sha256"] != hashes[config.name]:
         raise ValueError("Palace configuration changed before launch")
     execution = launch_palace(plan, output)
@@ -145,21 +287,25 @@ def solve_local(case, stage, *, executable, memory_mb=4096, wall_time_s=600):
         return execution
     if file_hash(case / "mesh.msh") != hashes["mesh.msh"]:
         raise ValueError("Palace mesh changed during launch")
-    evidence = _field_provenance(output, STAGE_TABLES[stage], solved_mesh=stage == "eigenmode", synthetic=False)
+    evidence = _field_provenance(output, STAGE_TABLES[stage], solved_mesh=stage == "eigenmode",
+                                 synthetic=False, expected_mpi_ranks=plan["mpi_ranks"])
     receipt = {"schema": LOCAL_RUN_SCHEMA, "stage": stage, "status": "COMPLETE",
                "config_sha256": hashes[config.name], "mesh_sha256": hashes["mesh.msh"],
-               "execution_sha256": file_hash(output / "execution.json"), "field_sha256": evidence}
+               "execution_sha256": file_hash(output / "execution.json"), "field_sha256": evidence,
+               "mesh_preprocessing": _mesh_preprocessing(output, manifest["tetrahedra"])}
     atomic_json(output / "fullwave-execution.json", receipt)
     return receipt
 
 
-def _field_provenance(directory, files, *, solved_mesh, synthetic):
+def _field_provenance(directory, files, *, solved_mesh, synthetic, expected_mpi_ranks=None):
     version = read_json(directory / "palace.json")
     expected_tags = {PALACE_TAG, PALACE_TAG.removeprefix("v"), PALACE_COMMIT, PALACE_COMMIT[:7]}
     info = version.get("Problem", {})
     if (version.get("GitTag") not in expected_tags or type(info.get("MPISize")) is not int
             or info["MPISize"] < 1 or type(info.get("MeshElements")) is not int or info["MeshElements"] < 1):
         raise ValueError(f"Missing pinned Palace build and run metadata in {directory}")
+    if expected_mpi_ranks is not None and (type(expected_mpi_ranks) is not int or info["MPISize"] != expected_mpi_ranks):
+        raise ValueError(f"Palace reported MPI size {info['MPISize']}, expected {expected_mpi_ranks}")
     paths = [directory / name for name in ("palace.json", *files)]
     if solved_mesh:
         meshes = sorted((directory / "gridfunction" / "eigenmode").glob("mesh.*"))
@@ -235,10 +381,29 @@ def _scattering_checks(train, train_response, holdout, holdout_response):
     i = np.searchsorted(train, holdout)
     u = ((holdout - train[i - 1]) / (train[i] - train[i - 1]))[:, None, None]
     predicted = (1 - u) * train_response[i - 1] + u * train_response[i]
+    squared_error = np.abs(predicted - holdout_response)**2
     full_response = np.concatenate((train_response, holdout_response))
-    return {"scattering_passivity_abs": float(max(0, np.linalg.svd(full_response, compute_uv=False).max() - 1)),
-            "scattering_reciprocity_abs": float(np.max(np.abs(full_response - full_response.transpose(0, 2, 1)))),
-            "heldout_complex_rms": float(np.sqrt(np.mean(np.abs(predicted - holdout_response)**2)))}
+    metrics = {"scattering_passivity_abs": float(max(0, np.linalg.svd(full_response, compute_uv=False).max() - 1)),
+               "scattering_reciprocity_abs": float(np.max(np.abs(full_response - full_response.transpose(0, 2, 1)))),
+               "heldout_complex_rms": float(np.sqrt(squared_error.mean()))}
+    return metrics, np.sqrt(squared_error.mean(axis=0))
+
+
+def _readout_through_errors(design, port_rms):
+    port_index = {port["label"]: index for index, port in enumerate(design["ports"])}
+    physical_pairs = {}
+    for row in design["readout_channels"]:
+        pair = (row["input_port"], row["output_port"])
+        physical_pairs.setdefault(pair, []).append(row["qubit"])
+    result = []
+    for (input_port, output_port), qubits in physical_pairs.items():
+        source = port_index[input_port]
+        destination = port_index[output_port]
+        names = {"qubit": qubits[0]} if len(qubits) == 1 else {"qubits": qubits}
+        result.append({**names, "input_port": input_port, "output_port": output_port,
+                       "forward_heldout_complex_rms": float(port_rms[destination, source]),
+                       "reverse_heldout_complex_rms": float(port_rms[source, destination])})
+    return result
 
 
 def _match_modes(overlap, coarse, fine):
@@ -400,15 +565,19 @@ def bind_electrostatic(directory, design, *, synthetic=False):
     capacitance = np.column_stack([_column(table, f"C[i][{i}] (F)") for i in range(1, count + 1)])
     if np.max(capacitance - np.diag(np.diag(capacitance))) > 1e-25:
         raise ValueError("Electrostatic mutual capacitances have the wrong sign")
-    ec, _ = reduce_islands(capacitance, np.empty((count, 0)), len(MODE_ORDER),
-                           [junction["capacitance_F"] * 1e15 for junction in design["junctions"]])
+    branches = design["junctions"]
+    groups = _junction_groups(design)
+    cj = [sum(branches[index]["capacitance_F"] for index in group) * 1e15 for group in groups]
+    ec, _ = reduce_islands(capacitance, np.empty((count, 0)), len(MODE_ORDER), cj)
     cell = linear_chain_cell(4, name=design["design_id"] + "-electrostatic")
     cell.update(parameter_origin="assumed_circuit" if synthetic else "extracted_full_cell", EC_matrix_GHz=ec.tolist(),
-                EJ_idle_GHz=[junction["EJ_GHz"] for junction in design["junctions"]],
-                idle_flux_Phi0=[junction["bias_Phi0"] for junction in design["junctions"]],
+                EJ_idle_GHz=[sum(branches[index]["EJ_GHz"] for index in group) for group in groups],
+                idle_flux_Phi0=[branches[group[0]]["bias_Phi0"] for group in groups],
                 provenance={"design_sha256": digest(design), "geometry_extracted": not synthetic,
                             "synthetic": synthetic, "producer": "Synthetic fixture" if synthetic
                             else "Palace electrostatic terminated-island comparison"})
+    if design["schema"] == ASSEMBLY_DESIGN_SCHEMA:
+        cell["provenance"]["junction_capacitance_by_mode_fF"] = dict(zip(MODE_ORDER, cj, strict=True))
     return {"cell": cell, "source_sha256": files}
 
 
@@ -424,15 +593,26 @@ def _model(design, fine, train, scattering, qualification):
     kerr[np.diag_indices_from(kerr)] *= 0.5
     if np.any(transitions <= 0):
         raise ValueError("Quartic approximation gives a nonpositive modal transition")
-    return {"schema": MODEL_SCHEMA, "design_sha256": digest(design), "qualification_sha256": digest(qualification),
-            "mode_ids": fine["modes"].tolist(), "junction_order": list(MODE_ORDER), "ports": design["ports"],
-            "linear_mode_GHz": frequencies.tolist(), "f01_GHz": transitions.tolist(),
-            "zero_point_phase_rad": phase_zpf.tolist(), "kerr_GHz": kerr.tolist(),
-            "kappa_signed_GHz": fine["kappa_signed_GHz"].tolist(), "frequency_grid_GHz": train.tolist(),
-            "scattering_real": scattering.real.tolist(), "scattering_imag": scattering.imag.tolist(),
-            "units": {"frequency": "GHz", "time": "ns", "phase": "rad", "scattering": "power wave ratio"},
-            "approximation": "First-order quartic EPR at the fixed idle bias, diagonal in the modal Fock basis",
-            "physical_device_validated": False, "synthetic": qualification["synthetic"]}
+    model = {"schema": MODEL_SCHEMA, "design_sha256": digest(design), "qualification_sha256": digest(qualification),
+             "mode_ids": fine["modes"].tolist(), "junction_order": [row["label"] for row in design["junctions"]],
+             "ports": design["ports"],
+             "linear_mode_GHz": frequencies.tolist(), "f01_GHz": transitions.tolist(),
+             "zero_point_phase_rad": phase_zpf.tolist(), "kerr_GHz": kerr.tolist(),
+             "kappa_signed_GHz": fine["kappa_signed_GHz"].tolist(), "frequency_grid_GHz": train.tolist(),
+             "scattering_real": scattering.real.tolist(), "scattering_imag": scattering.imag.tolist(),
+             "units": {"frequency": "GHz", "time": "ns", "phase": "rad", "scattering": "power wave ratio"},
+             "approximation": "First-order quartic EPR at the fixed idle bias, diagonal in the modal Fock basis",
+             "physical_device_validated": False, "synthetic": qualification["synthetic"]}
+    if design["schema"] in (DESIGN_SCHEMA, ASSEMBLY_DESIGN_SCHEMA):
+        model["readout_channels"] = design["readout_channels"]
+    if design["design_id"] == SHARED_DESIGN_ID:
+        model["readout_topology"] = "shared"
+    if design["schema"] == ASSEMBLY_DESIGN_SCHEMA:
+        model.update(readout_topology=design["readout_topology"],
+                     junction_modes=[row["mode"] for row in design["junctions"]], junction_EJ_idle_GHz=ej.tolist(),
+                     approximation="Fixed-idle-bias quartic EPR with one nonlinear contribution per junction branch",
+                     omitted_effects=["Cubic terms of flux-biased junction branches"])
+    return model
 
 
 def qualify_reduction(coarse_dir, fine_dir, overlap_path, output, *, synthetic=False):
@@ -457,27 +637,43 @@ def qualify_reduction(coarse_dir, fine_dir, overlap_path, output, *, synthetic=F
     pairs = overlaps.pop("mode_pairs")
     eigen_metrics = {metric: max(coarse["metrics"][metric], fine["metrics"][metric]) for metric in
                      ("eigen_backward_error", "energy_relative", "junction_energy_fraction_abs", "loss_power_relative")}
-    metrics = {**eigen_metrics, **overlaps, **_scattering_checks(train, response, holdout, holdout_response)}
-    checks = {name: value >= TOLERANCE[name] if name.endswith("_min") else value <= TOLERANCE[name]
+    scattering_metrics, port_rms = _scattering_checks(train, response, holdout, holdout_response)
+    metrics = {**eigen_metrics, **overlaps, **scattering_metrics}
+    thresholds = TOLERANCE.copy()
+    readout_errors = []
+    if design["schema"] in (DESIGN_SCHEMA, ASSEMBLY_DESIGN_SCHEMA):
+        readout_errors = _readout_through_errors(design, port_rms)
+        metrics[READOUT_HOLDOUT_METRIC] = max(
+            max(row["forward_heldout_complex_rms"], row["reverse_heldout_complex_rms"]) for row in readout_errors
+        )
+        thresholds[READOUT_HOLDOUT_METRIC] = TOLERANCE["heldout_complex_rms"]
+    checks = {name: value >= thresholds[name] if name.endswith("_min") else value <= thresholds[name]
               for name, value in metrics.items()}
     checks["Q_consistency"] = all(case["metrics"]["Q_consistency"] for case in (coarse, fine))
-    junctions, mode_indices = linear_sum_assignment(np.abs(fine["participation"].T), maximize=True)
-    assignments = [{"junction": design["junctions"][j]["label"], "mode_id": int(fine["modes"][m]),
+    groups = _junction_groups(design)
+    group_participation = np.column_stack([np.abs(fine["participation"][:, group]).sum(axis=1) for group in groups])
+    junctions, mode_indices = linear_sum_assignment(group_participation.T, maximize=True)
+    assignments = [{"junction": MODE_ORDER[j], "mode_id": int(fine["modes"][m]),
                     "frequency_GHz": float(fine["frequency_GHz"][m]),
-                    "participation_abs": float(abs(fine["participation"][m, j]))} for j, m in zip(junctions, mode_indices)]
+                    "participation_abs": float(group_participation[m, j])} for j, m in zip(junctions, mode_indices)]
+    if design["schema"] == ASSEMBLY_DESIGN_SCHEMA:
+        for assignment, index in zip(assignments, junctions, strict=True):
+            assignment["junction_branches"] = [design["junctions"][j]["label"] for j in groups[index]]
     checks["junction_modes_covered"] = len(assignments) == len(MODE_ORDER) and all(
         item["participation_abs"] >= .1 and train[0] < item["frequency_GHz"] < train[-1] for item in assignments
     )
     baseline = bind_electrostatic(_stage_output(fine_path, fine_manifest, "electrostatic", synthetic=synthetic),
                                   design, synthetic=synthetic)
     record = {"schema": QUALIFICATION_SCHEMA, "design_sha256": digest(design), "metrics": metrics,
-              "thresholds": TOLERANCE, "checks": checks, "passed": all(checks.values()), "mode_pairs": pairs,
+              "thresholds": thresholds, "checks": checks, "passed": all(checks.values()), "mode_pairs": pairs,
               "junction_mode_assignments": assignments, "junction_participation_min": .1,
               "synthetic": synthetic, "coarse_input_sha256": coarse_manifest["files_sha256"],
               "fine_input_sha256": fine_manifest["files_sha256"], "overlap_sha256": file_hash(overlap_path),
               "coarse_fields_sha256": coarse["file_sha256"], "fine_fields_sha256": fine["file_sha256"],
               "training_sha256": train_files, "heldout_sha256": holdout_files,
               "electrostatic_sha256": baseline["source_sha256"], "physical_device_validated": False}
+    if readout_errors:
+        record["readout_through_interpolation"] = readout_errors
     output = Path(output)
     output.mkdir(parents=True, exist_ok=False)
     atomic_json(output / "qualification.json", record)

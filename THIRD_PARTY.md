@@ -11,6 +11,7 @@ MFEM and nlohmann/json and the matching Palace source headers.
 | threadpoolctl and psutil | BSD-3-Clause | Numerical threads and process resources |
 | Shapely | BSD-3-Clause | Conductor polygons |
 | Gmsh | GPL-2.0-or-later with upstream linking exception | CAD and meshing |
+| Gdstk | BSL-1.0 | GDSII layout export |
 | Palace | Apache-2.0 | Native field solver |
 | MFEM | BSD-3-Clause | Finite-element field recovery |
 | nlohmann/json | MIT | Native overlap result serialization |

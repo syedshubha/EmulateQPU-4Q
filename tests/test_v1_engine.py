@@ -12,6 +12,8 @@ from emulateqpu._engine.evolve import propagate_states
 from emulateqpu._engine import measurement as ms
 from emulateqpu._engine.program import compile_program, run_program, measurement_interval_ns
 from emulateqpu.chain import linear_chain_cell, mode_order
+from emulateqpu.contracts import example_request
+from emulateqpu.planner import plan_request
 
 
 class EngineContracts(unittest.TestCase):
@@ -212,6 +214,62 @@ class EngineContracts(unittest.TestCase):
         first = propagate_states(self.model, half, V, rtol=1e-11, atol=1e-13, samples=2)
         second = propagate_states(self.model, half, first['final'], carrier_time_offset_ns=1., rtol=1e-11, atol=1e-13, samples=2)
         np.testing.assert_allclose(second['final'], whole['final'], atol=1e-8, rtol=0)
+
+    def test_sampled_microwave_evolution_is_invariant_to_zero_padding(self):
+        model = build_model(linear_chain_cell(4, coupling_GHz=0.), (3,)*7, cap=2,
+                            encoding_labels=['0000'], encoding_kind='bare')
+        duration, spacing, peak = 5., .0005, 6004
+        envelope = np.zeros(10001)
+        envelope[peak] = 1.
+        level_one = model.basis.states[:, 0] == 1
+        for quadrature, carrier, clock in (
+            ('I', 0., 0.),
+            ('Q', model.analysis['local_f01_GHz'][0], .017),
+        ):
+            with self.subTest(quadrature=quadrature):
+                pulse = dict(mode='q0', amplitude_GHz=.1, frequency_GHz=carrier, envelope='sampled')
+                results = []
+                for start, end in ((0, len(envelope)-1), (peak-16, peak+16)):
+                    values = envelope[start:end+1].tolist()
+                    samples_I = values if quadrature == 'I' else [0.]*len(values)
+                    samples_Q = values if quadrature == 'Q' else [0.]*len(values)
+                    drive = dict(pulse, start_ns=start*spacing, duration_ns=(end-start)*spacing,
+                                 samples_I=samples_I, samples_Q=samples_Q)
+                    schedule = dict(duration_ns=duration, drives=[drive], flux=[])
+                    result = propagate_states(model, schedule, model.encoding, carrier_time_offset_ns=clock)
+                    results.append(result['final'])
+                np.testing.assert_allclose(*results, atol=1e-9, rtol=0.)
+                self.assertGreater(np.sum(abs(results[0][level_one, 0])**2), 1e-8)
+
+    def test_sampled_flux_evolution_is_invariant_to_zero_padding(self):
+        cell = linear_chain_cell(4, coupling_GHz=0.)
+        values = np.zeros(801)
+        values[304] = .06
+        for tau in (0., .15):
+            with self.subTest(tau_ns=tau):
+                cell['lines']['c01']['tau_ns'] = tau
+                model = build_model(cell, (3,)*7, cap=2, encoding_labels=['0000'], encoding_kind='bare')
+                pulse = dict(coupler='c01', shape='sampled', dt_ns=.01)
+                padded = dict(pulse, start_ns=0., samples_Phi0=values.tolist())
+                cropped = dict(pulse, start_ns=3.03, samples_Phi0=values[303:306].tolist())
+                states = [
+                    propagate_states(model, dict(duration_ns=9., flux=[shape], drives=[]), model.encoding)['final']
+                    for shape in (padded, cropped)
+                ]
+                np.testing.assert_allclose(*states, atol=1e-9, rtol=0.)
+                level_two = model.basis.states[:, 1] == 2
+                self.assertGreater(np.sum(abs(states[0][level_two, 0])**2), 1e-7)
+
+    def test_planner_counts_sampled_flux_integration_intervals(self):
+        request = example_request('four-qubit')
+        request['schedule'] = {
+            'duration_ns': 3., 'drives': [],
+            'flux': [{'coupler': 'c01', 'shape': 'sampled', 'dt_ns': .1,
+                      'samples_Phi0': [0., 0., .01, .02, .01, 0., 0.]}],
+        }
+        stage, = plan_request(request)['carrier_work']['stages']
+        self.assertEqual(stage['accepted_steps_floor'], 5)
+        self.assertEqual(stage['rhs_evaluations_floor'], 60)
 
     def test_program_resume_preserves_clock_branch_weights_and_frames(self):
         pulse = dict(duration_ns=.5, flux=[], drives=[dict(mode='q0', start_ns=0., duration_ns=.5,

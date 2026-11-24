@@ -302,6 +302,17 @@ def execute_task(root, index, *, retry=False):
     return _execute_task(root, manifest, study, index, retry=retry)
 
 
+def _slurm_dispatch_owner():
+    job = os.environ.get("SLURM_JOB_ID", "")
+    array = os.environ.get("SLURM_ARRAY_JOB_ID", "")
+    index = os.environ.get("SLURM_ARRAY_TASK_ID", "")
+    cluster = os.environ.get("SLURM_CLUSTER_NAME", "")
+    if (all(re.fullmatch(r"[0-9]+", value) for value in (job, array, index))
+            and re.fullmatch(r"[A-Za-z0-9_.-]+", cluster)):
+        return {"job_id": job, "array_job_id": array, "array_task_id": int(index), "cluster": cluster}
+    return None
+
+
 def _execute_task(root, manifest, study, index, *, retry):
     if type(index) is not int or not 0 <= index < len(study["tasks"]):
         raise ValueError("Task index outside the immutable array map")
@@ -319,8 +330,11 @@ def _execute_task(root, manifest, study, index, *, retry):
     process = None
     try:
         with os.fdopen(fd, "wb") as stream:
-            stream.write((canonical({"controller_pid": os.getpid(), "created_utc": _now(),
-                                     "task_id": task["id"]}) + "\n").encode())
+            dispatch = {"controller_pid": os.getpid(), "created_utc": _now(), "task_id": task["id"],
+                        "request_sha256": identity["request_sha256"]}
+            if manifest["backend"] == "slurm" and (owner := _slurm_dispatch_owner()):
+                dispatch["slurm"] = owner
+            stream.write((canonical(dispatch) + "\n").encode())
             stream.flush()
             os.fsync(stream.fileno())
         previous = sorted(task_root.glob("attempt_*"))

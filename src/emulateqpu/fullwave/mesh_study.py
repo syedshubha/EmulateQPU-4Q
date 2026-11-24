@@ -11,8 +11,9 @@ import numpy as np
 
 from ..io import atomic_json, file_hash, read_json
 from ..palace import launch_palace, plan_palace
-from .design import (LADDER_MESHES, LADDER_OUTPUT_DIRECTORY, PALACE_COMMIT, PALACE_TAG, _configs,
-                     _electrostatic_options, ladder_mesh_settings, prepare_design)
+from .design import (LADDER_MESHES, LADDER_OUTPUT_DIRECTORY, LEGACY_DESIGN_SCHEMA, PALACE_COMMIT, PALACE_TAG,
+                     READOUT_TOPOLOGIES, _configs, _electrostatic_options, _validate_readout_topology,
+                     add_planar_design_arguments, four_qubit_design, ladder_mesh_settings, prepare_design)
 from .reduction import _case, _column, _indices, _table
 
 STUDY_SCHEMA = "emulateqpu.fullwave.electrostatic-mesh-study.v1"
@@ -44,7 +45,7 @@ def _input_bindings(root, order, full_assembly):
         if case.is_symlink():
             raise ValueError(f"Unsafe mesh level {case}")
         _, manifest, design = _case(case, level)
-        settings = ladder_mesh_settings(level)
+        settings = ladder_mesh_settings(level, legacy=design["schema"] == LEGACY_DESIGN_SCHEMA)
         count = manifest["tetrahedra"]
         if (manifest["mesh_settings"] != settings or type(count) is not int
                 or not 0 < count <= settings["maximum_tetrahedra"]):
@@ -85,15 +86,22 @@ def register_study(root, *, order=2, full_assembly=False):
     return plan
 
 
-def prepare_study(root, *, order=2, full_assembly=False):
+def prepare_study(root, *, order=2, full_assembly=False, legacy=False, readout_topology="dedicated",
+                  readout_frequencies_GHz=None, drive_gap_um=None):
     """Generate three fixed-geometry meshes and register the study before any solve."""
     if type(order) is not int or order not in (1, 2):
         raise ValueError("Electrostatic order must be 1 or 2")
+    _validate_readout_topology(legacy, readout_topology)
+    if readout_frequencies_GHz is not None or drive_gap_um is not None:
+        four_qubit_design(legacy=legacy, readout_topology=readout_topology,
+                          readout_frequencies_GHz=readout_frequencies_GHz, drive_gap_um=drive_gap_um)
     root = Path(root).resolve()
     root.mkdir(parents=True, exist_ok=False)
     for level in LADDER_MESHES:
         prepare_design(root / level, refinement=level, electrostatic_order=order,
-                       electrostatic_full_assembly=full_assembly)
+                       electrostatic_full_assembly=full_assembly, legacy=legacy,
+                       readout_topology=readout_topology, readout_frequencies_GHz=readout_frequencies_GHz,
+                       drive_gap_um=drive_gap_um)
     return register_study(root, order=order, full_assembly=full_assembly)
 
 
@@ -342,6 +350,11 @@ def main(argv=None):
         command.add_argument("study", type=Path)
         command.add_argument("--order", type=int, choices=(1, 2), default=2)
         command.add_argument("--full-assembly", action="store_true")
+        if name == "prepare":
+            command.add_argument("--legacy", action="store_true", help="Prepare the original q1-only readout design")
+            command.add_argument("--readout-topology", choices=READOUT_TOPOLOGIES, default="dedicated",
+                                 help="Choose four dedicated feedlines or one shared feedline (default: dedicated)")
+            add_planar_design_arguments(command)
     run = commands.add_parser("run")
     run.add_argument("study", type=Path)
     run.add_argument("level", choices=tuple(LADDER_MESHES))
@@ -359,7 +372,9 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         if args.command == "prepare":
-            result = prepare_study(args.study, order=args.order, full_assembly=args.full_assembly)
+            result = prepare_study(args.study, order=args.order, full_assembly=args.full_assembly,
+                                   legacy=args.legacy, readout_topology=args.readout_topology,
+                                   readout_frequencies_GHz=args.readout_frequencies_ghz, drive_gap_um=args.drive_gap_um)
         elif args.command == "register":
             result = register_study(args.study, order=args.order, full_assembly=args.full_assembly)
         elif args.command == "run":
