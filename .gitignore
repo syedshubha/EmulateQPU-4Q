@@ -6,6 +6,9 @@
 !/.github/workflows/*.yml
 !/docs/
 !/docs/*.md
+!/docs/figures/
+!/docs/figures/reference-die-layouts.svg
+!/docs/figures/render_reference_layout.py
 !/physical/
 !/physical/fullwave-overlap/
 !/physical/fullwave-overlap/CMakeLists.txt

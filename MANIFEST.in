@@ -1,6 +1,7 @@
 include .gitattributes
 include CONTRIBUTING.md README.md requirements-reference.txt NOTICE THIRD_PARTY.md justfile uv.lock
 recursive-include docs *.md
+include docs/figures/reference-die-layouts.svg docs/figures/render_reference_layout.py
 recursive-include physical/fullwave-overlap CMakeLists.txt *.cpp
 recursive-include tests *.py
 recursive-include src/emulateqpu *.json
