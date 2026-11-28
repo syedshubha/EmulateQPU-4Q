@@ -17,6 +17,23 @@ Circuit demos use assumed parameters. Mounted-device RF port convergence,
 readout linewidths, and hardware calibration remain open.
 [Qualification protocol](docs/FULLWAVE.md#qualify-predictions-for-the-mounted-assembly)
 
+## At a glance
+
+| Check | Result |
+| --- | --- |
+| Test suite | 148 unit and integration tests plus 2 reference tests, run on Linux, macOS, and Windows in CI |
+| Transmon spectra against scqubits 4.3.1 | Largest level difference 9 × 10⁻¹⁴ GHz over three EC/EJ pairs |
+| Pulse dynamics against QuTiP 5.3.1 | Largest state-amplitude difference 4 × 10⁻¹² for a driven three-mode model (27 states) |
+| Four-channel pulse-to-IQ benchmark | All 5 checks pass in about 13 s on a 2-vCPU cloud VM; a 7 ns pulse raises q0's \|1⟩ population from 5 × 10⁻⁷ to 0.33 |
+| Coupler tuning on the four-qubit chain | Detuning coupler c01 lowers q0–q1 static ZZ from 3.4 kHz to 0.45 Hz while q1–q2 stays at 0.13 kHz |
+
+The physics rows use the assumed, uncalibrated circuit parameters noted above.
+
+![Four-qubit chain with coupler c01 swept: mode frequencies and residual ZZ versus coupler flux](docs/figures/coupler-sweep.svg)
+
+Regenerate the figure and its data with
+`uv run --locked --with matplotlib python docs/figures/render_coupler_sweep.py`.
+
 ## Quickstart
 
 Use Python 3.11 or later and `uv` from a source checkout. The four-channel
